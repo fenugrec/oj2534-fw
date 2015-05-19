@@ -1,0 +1,12 @@
+oj2534-fw
+Firmware for oj2534
+
+oj2534 is a GPL open-source, SAE J2534 (mostly) compliant tool.
+To my knowledge, no similar projects exist.
+
+oj2534 is composed of:
+	-hw : STM32F072 evaluation board with electrical interfaces required by J2534
+	-fw : firmware for above
+	-sw : driver running on host PC, providing the J2534 API (through a standard J2534 dll on windows, other mechanisms possible)
+
+Current status : incomplete
