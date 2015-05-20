@@ -2,14 +2,20 @@
 //TXworker & stuff for iso9141 / 14230
 
 #include <stddef.h>
-#include "txwork.h"
-#include "iso_shr.h"
+
+#include <stm32f0xx_tim.h>
+
 #include "stypes.h"
 #include "msg.h"
 #include "fifos.h"
 #include "pmsg.h"
 #include "utils.h"
 #include "params.h"
+#include "timers.h"
+
+#include "txwork.h"
+#include "iso_shr.h"
+#include "iso.h"
 
 //if specified timeout==0, and for PMSG timeouts : use DEFTIMEOUT ms per byte
 #define DEFTIMEOUT	2
@@ -18,14 +24,14 @@
 //"bus too busy" error if init doesn't complete within ISO_TMAXINIT ms
 #define ISO_TMAXINIT	5000
 
+/* private funcs (maybe the _ could be dropped since they're static) */
 static void _isotx_startinit(u16 len, u8 type);
 static void _isotx_slowi(void);
 static void _isotx_fasti(void);
-static int isotx_findpmsg(void);
+static int _isotx_findpmsg(void);
 static void _isotx_start(uint len, u16 timeout, u8 * optdata);
 static void _isotx_continue(void);
 static void _isotx_done(void);
-static void isotx_abort(void);
 
 /* struct "its" (iso tx state) : internal data for tx worker state machine
  * */
@@ -33,7 +39,7 @@ static void isotx_abort(void);
 //		TX while sending a msg;
 //		FI* during 14230 fast init;
 //		SI* during 5baud init (9141 or 14230)
-//only read / modified by iso_txwork() or its support functions
+//only read / modified by txw or its support functions
 
 static struct  {
 	enum txs { TX_IDLE, FI, SI, TX} tx_state;
@@ -48,7 +54,7 @@ static struct  {
 	};
 
 /*** iso duplex removal (see iso_shr.h) ***/
-//dup_state=WAITDUPLEX : next RX int checks duplex_req && set DUP_ERR or IDLE as required
+//when dup_state=WAITDUPLEX : next RX int checks duplex_req && set DUP_ERR or IDLE as required
 enum dupstate_t dup_state=DUP_IDLE;
 u8 duplex_req;	//next byte expected if WAITDUPLEX
 
@@ -56,15 +62,29 @@ u8 duplex_req;	//next byte expected if WAITDUPLEX
 static u16 iso_initlen;	//1 for slow init, [datasize] for fastinit
 static u32 iso_initwait;	//required idle before init (ms*frclock_conv)
 //iso_initstate: statemachine for slow/fast inits. FI* : fast init states, SI* = slowinit states
-static enum initstate_t {INIT_IDLE, FI0, FI1, FI2, SI0, SI1, SI2} iso_initstate=INIT_IDLE;
+static enum initstate_t {INIT_IDLE, FI0, FI1, FI2, SI0, SI1, SI2, SI3, SI4, SI5, SI6} iso_initstate=INIT_IDLE;
 
-//iso_txwork() : should tolerate being polled continuously?, but
-//should be called by a self-settable TMR expiry IRQ;
-//XXX also needs to be called / tail-chained into, from the RX IRQ (for de-duplexing)
-//XXX int de UART_TX_DONE doit pouvoir tailchainer aussi, ou pas ? depend de slowinit
-void iso_txwork(void) {
+/* isotx_work() : tx worker for ISO9141/ISO14230
+  Should tolerate being polled continuously?
+  Called from:
+		-a self-settable TMR expiry IRQ;
+		-RX IRQ (for de-duplexing)
+		-(XXX)? UART TX done IRQ ? depends on slowinit impl
+*/
+void isotx_work(void) {
 	struct txblock txb;	//de-serialize blocks from fifo
 	u16 bsize, tout;	//msg length, timeout(ms)
+	static _Bool autoq=0, busy=0 ;	//to recurse max once
+	u32 lock;
+
+	lock=sys_SDI();
+	if (busy) {
+		autoq = 1;	// already running : queue but do not re-enter !
+		sys_RI(lock);
+		return;
+	}
+	busy=1;
+	sys_RI(lock);
 
 	switch (its.tx_state) {
 	case TX:
@@ -81,7 +101,7 @@ void iso_txwork(void) {
 		break;
 	case TX_IDLE:
 		//prioritize periodic msgs.
-		if (isotx_findpmsg() == 0) {
+		if (_isotx_findpmsg() == 0) {
 			//_findpmsg takes care of everything
 			return;
 		}
@@ -90,18 +110,19 @@ void iso_txwork(void) {
 		//get hdr + blocksize
 		if (fifo_cblock(TXW, TXW_RP_ISO, (u8 *) &txb, 3) != 3) {
 			//probably an incomplete txblock
-			//XXX set next int, etc
+			//XXX don't auto-poll ?
 			return;
 		}
 		if ((txb.hdr & TXB_SENDABLE) ==0) {
-			//txblock not ready
-			//XXX set next int, etc
+			//txblock not ready, retry soon
+			txwork_setint(20, &ISO_TMR_CCR);	//XXX auto-poll... maybe not efficient
 			return;
 		}
 		//valid, sendable block : skip, or parse completely.
 		bsize = (txb.sH <<8) | txb.sL;
 		if (bsize >= (u16) -TXB_DATAPOS) {
 			//fatal : bad block size (can't skip block !)
+			DBGM("huge txb", bsize);
 			big_error();
 		}
 
@@ -136,18 +157,26 @@ void iso_txwork(void) {
 		break;	//case TX_IDLE
 	default:
 		break;
+	}	//switch txstate
+
+	lock=sys_SDI();
+	busy = 0;
+	if (autoq) {
+		isotx_work();	//XXX ugly partial recursion
+		autoq = 0;
 	}
+	sys_RI(lock);
 	return;
 }
 
 /*********** ISO TX STUFF *********/
 //ptet fitter dans un autre fihier ?
 
-//isotx_findpmsg : cycle through pmsg IDs, try to claim an enabled ISO pmsg.
+//_isotx_findpmsg : cycle through pmsg IDs, try to claim an enabled ISO pmsg.
 //TODO : generaliz pour CAN ?
 //calls _isotx_start() && ret 0 if ok
 //ret -1 if failed
-static int isotx_findpmsg(void) {
+static int _isotx_findpmsg(void) {
 	uint pmsg_id;
 	for (pmsg_id=0; pmsg_id < PMSG_MAXNUM; pmsg_id++) {
 		if (!pmsg_claim(pmsg_id)) {
@@ -224,7 +253,8 @@ static void _isotx_continue(void) {
 	}
 	//or timed out
 	if ((frclock - iso_ts.tx_started) >= iso_ts.tx_timeout) {
-		//XXX flag tx timeout err
+		DBGM("isotx timeout", its.curpos);
+		//XXX flag tx timeout err + indication for msgid?
 		(void) fifo_skip(TXW, TXW_RP_ISO, its.curlen - its.curpos);
 		its.curpos = its.curlen;
 		_isotx_done();
@@ -280,7 +310,7 @@ static void _isotx_continue(void) {
 	switch (its.tx_mode) {
 	case TXM_FIFO:
 		if (fifo_rblock(TXW, TXW_RP_ISO, &nextbyte, 1) != 1) {
-			DBGM("TXM_FIFO err@", its.curlen);
+			DBGM("TXM_FIFO err", its.curpos);
 			big_error();
 			return;
 		}
@@ -303,7 +333,7 @@ static void _isotx_continue(void) {
 	ISO_UART->TDR = nextbyte;
 
 	its.curpos += 1;
-
+	//XXX update timestamps after TC int ?
 	iso_ts.last_act = frclock;
 	iso_ts.last_TX = iso_ts.last_act;
 
@@ -335,8 +365,9 @@ static void _isotx_done(void) {
 //isotx_abort : aborts current transmission; reset state machines;
 //skip current txblock.
 //XXX TODO : ensure this can work if called async while in txw...
-static void isotx_abort(void) {
-	//XXX reset speed (in case slowinit clobbered it)
+void isotx_abort(void) {
+	USART_Cmd(ISO_UART, DISABLE);	//clears UE
+	//XXX reset speed? (in case slowinit clobbered it)
 	//XXX clear TX break
 	if (its.tx_state == TX) {
 		uint skiplen = its.curlen - its.curpos;
@@ -352,6 +383,12 @@ static void isotx_abort(void) {
 	return;
 }
 
+//isotx_init : TODO
+void isotx_init(void) {
+	//XXX set USART params, enable,
+	//reset state, etc
+	return;
+}
 
 /**** ISO init funcs ****/
 
@@ -390,7 +427,7 @@ static void _isotx_startinit(u16 len, u8 type) {
 	return;
 }
 
-//_slowi : slow init; called by isotx IRQH
+//_slowi : slow init; called from txw
 //maintain current state of iso_initstate; when init is done we need to return 2 keybytes through ioctl...
 //build special RX message (dll translates to ioctl resp?) ?
 static void _isotx_slowi(void) {
@@ -398,7 +435,7 @@ static void _isotx_slowi(void) {
 	//check if init time was exceeded :
 	if ((frclock - iso_ts.tx_started) >= iso_ts.tx_timeout) {
 		DBGM("SI timeout", iso_initstate);
-		//XXX reset UART;
+		//XXX reset UART?
 		iso_initstate = INIT_IDLE;
 		isotx_abort();
 		return;
@@ -407,19 +444,44 @@ static void _isotx_slowi(void) {
 	switch (iso_initstate) {
 	case SI0: {
 		u32 guardtime;
-		//make sure guard time is respected:
-		guardtime = (frclock - iso_ts.last_act);
+		//make sure W5 / Tidle is respected:
+		guardtime = (frclock - iso_ts.last_act) / frclock_conv;
 		if (guardtime < iso_initwait) {
-			//XXX set next int(iso_initwait - guardtime);
+			txwork_setint(iso_initwait - guardtime, &ISO_TMR_CCR);
 			return;
 		}
-		//XXX setup UART @ 5bps ? + start TX, etc.
+		//XXX setup UART @ 5bps ? + start TX, waitduplex, etc.
 		return;
 		}
 		break;
 	case SI1:
+		//XXX check addr duplex
+		//XXX reset UART speed etc
+		//XXX set "cheatduplex"
 		break;
 	case SI2:
+		//XXX check sync byte 0x55
+		//cheatduplex
+		break;
+	case SI3:
+		//XXX get KB1
+		kb1 = duplex_req;
+		//XXX cheatduplex
+		break;
+	case SI4:
+		//XXX get KB2
+		kb2 = duplex_req;
+		//TX ~KB2;
+		//waitduplex;
+		break;
+	case SI5:
+		//XXX check duplex;
+		//cheatduplex
+		break;
+	case SI6:
+		//XXX check !addr
+		//XXX success: signal kb1,kb2
+		DBGM("kb1:kb2", kb1<<8 | kb2);
 		break;
 	default:
 		DBGM("bad SI state", iso_initstate);

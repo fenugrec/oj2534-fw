@@ -25,7 +25,7 @@ void _assertlog(const char *f1, const char *f2) {
 	f1len = strlen(f1);
 	if (f1len >= ASSERTLEN*0.75) f1len = 0.75*ASSERTLEN;	//use max 75% of buffer for f1
 	strncpy(assertm, f1, f1len);
-	strncpy(assertm + f1len, ASSERTLEN - f1len);
+	strncpy(assertm + f1len, f2, ASSERTLEN - f1len);
 	assertm[ASSERTLEN]=0;
 	dbg_log(assertm, 0);
 	big_error();

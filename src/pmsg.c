@@ -4,13 +4,12 @@
 
 #include <stddef.h>
 
+#include "timers.h"
 #include "pmsg.h"
 #include "msg.h"
 #include "stypes.h"
 #include "utils.h"
 
-#define PMSG_TMR	TIM16	//XXX
-#define PMSG_IRQH	TIM16_IRQHandler
 #define PMSG_MAX_SIZE	12	//must fit in PMSG_LENMASK
 
 //access to ->flags NEEDS to be atomic
@@ -28,9 +27,10 @@ struct pmsg_desc {
 	u8 data[PMSG_MAX_SIZE];
 };
 
+/* private funcs */
+void pmsg_work(void);
 
 // PMSG ids = 0 to (PMSG_MAXNUM -1)
-
 static struct pmsg_desc pmsg_table[PMSG_MAXNUM];	//all possible periodic msgs.
 
 //rearm : set PMSG_TMR to expire in 'next' ms
@@ -43,24 +43,27 @@ static void _pmsg_rearm(u16 next) {
 
 /*************/
 /* technique 1 : maintain countdowns per PMSG, int on next soonest, and set PMSG_TXQ flag.
- *  pmsg_IRQH : semi-low prio INT on TMRx overflow/expiry.
+ *  PMSG_IRQH : semi-low prio INT on TMRx overflow/expiry.
  */
 void PMSG_IRQH(void) {
 	//XXX if (tmr expired)
-	pmsg_IRQH();
+	pmsg_work();
 	return;
 }
-void pmsg_IRQH(void) {
+
+//worker, called by IRQH handler (TMR expiry)
+//TODO : serialize;  prevent re-entry;  allow polling/call-on-demand (for adding msgs...)
+void pmsg_work(void) {
 	static u16 pmsg_countdown[ARRAY_SIZE(pmsg_table)];	//countdown=0 means disabled
 	static int idx_next;	//id of expired countdown
 	u16 min;
 	u16 newmin;	//finding next "soonest" msg
 	u32 pflags;
 	u32 lock;
-	
+
 	min = pmsg_countdown[idx_next];	//this has just elapsed;
 	newmin = (u16) -1;
-	
+
 	lock=sys_SDI();	//yuck, but no choice
 	for (uint i=0; i< ARRAY_SIZE(pmsg_table); i++) {
 		pflags = pmsg_table[i].flags;
@@ -74,7 +77,7 @@ void pmsg_IRQH(void) {
 			pflags |= PMSG_TXQ;
 			pmsg_table[i].flags = pflags;
 			pmsg_countdown[i] = (u16) (pflags & PMSG_PERMASK);
-			
+
 		} else {
 			//decrement others
 			pmsg_countdown[i] -= min;
@@ -113,7 +116,7 @@ int pmsg_del(uint id) {
 		rv = 0;
 	}
 	sys_RI(lock);
-	return rv;	
+	return rv;
 }
 
 //set BUSY flag; ret 0 if ok, -1 if error (PMSG not enabled, or not queued etc)
@@ -185,7 +188,7 @@ u8 * pmsg_getmsg(uint id, uint *len) {
 		return NULL;
 	}
 	sys_RI(lock);	//we can unlock since we confirmed msg is claimed
-	
+
 	*len = (pflags & PMSG_LENMASK) >> PMSG_LENSHIFT;
 	return pmsg_table[id].data;
 }

@@ -32,7 +32,11 @@ BIN  = $(CP) -O binary -S
 
 MCFLAGS = -mcpu=cortex-m0 -mthumb -mlittle-endian
 DBGFLAGS = -gdwarf-2
+#gcc flags for ram build :
 OPT = -Os
+ifeq ($(RAMBUILD), 1)
+	OPT += -ffunction-sections
+endif
 
 ASFLAGS = $(MCFLAGS) $(DBGFLAGS) -specs=nano.specs -nostartfiles -Wa,-amhls=$(<:.s=.lst) $(ADEFS)
 CPFLAGS = $(MCFLAGS) $(DBGFLAGS) $(OPT) -fomit-frame-pointer -std=c11 -Wall -Wfloat-equal -Wextra -pedantic -Wstrict-prototypes \
@@ -81,8 +85,8 @@ STMSPDDIR    = $(LIBSDIR)STM32F0xx_StdPeriph_Driver/
 CMINCDIR = $(LIBSDIR)CMSIS/Include/
 DEVDIR  = $(LIBSDIR)CMSIS/Device/ST/STM32F0xx/
 # StdPeriph dirs
-STMSPSRCDDIR = $(STMSPDDIR)src
-STMSPINCDDIR = $(STMSPDDIR)inc
+STMSPSRCDDIR = $(STMSPDDIR)src/
+STMSPINCDDIR = $(STMSPDDIR)inc/
 
 #dir for linker scripts
 LKRDIR = 
@@ -94,6 +98,7 @@ SRC += iso_rx.c
 SRC += pmsg.c
 SRC += params.c
 SRC += utils.c
+SRC += timers.c
 SRC += main.c
 #SRC += startup_stm32f072.s
 #SRC += .srcsystem_stm32f0xx.c
@@ -113,22 +118,21 @@ SRC += main.c
 #SRC += $(STMSPSRCDDIR)stm32f0xx_i2c.c
 #SRC += $(STMSPSRCDDIR)stm32f0xx_iwdg.c
 #SRC += $(STMSPSRCDDIR)stm32f0xx_pwr.c
-#SRC += $(STMSPSRCDDIR)stm32f0xx_rcc.c
+SRC += $(STMSPSRCDDIR)stm32f0xx_rcc.c
 #SRC += $(STMSPSRCDDIR)stm32f0xx_rtc.c
 #SRC += $(STMSPSRCDDIR)stm32f0xx_spi.c
 #SRC += $(STMSPSRCDDIR)stm32f0xx_tim.c
-#SRC += $(STMSPSRCDDIR)stm32f0xx_usart.c
+SRC += $(STMSPSRCDDIR)stm32f0xx_usart.c
 #SRC += $(STMSPSRCDDIR)stm32f0xx_wwdg.c
 #SRC += $(STMSPSRCDDIR)stm32f0xx_misc.c
 
 # List ASM source files here
-# it seems adding startup_stmX.s here doesn't work well...
 ASRC = startup_stm32f072.s
 	
 # List all user directories here
 UINCDIR = $(CMINCDIR) \
- $(DEVDIR)Include
-#          $(STMSPINCDDIR) 
+ $(DEVDIR)Include \
+ $(STMSPINCDDIR) 
 #          .inc      
 
 # List the user directory to look for the libraries here
@@ -176,7 +180,7 @@ ifeq ($(RAMBUILD), 1)
 else
 	$(TRGT)size $(FULL_PRJ).elf
 endif
-	
+
 %.o: %.c
 	$(CC) -c $(CPFLAGS) -I . $(INCDIR) $< -o $@
 

@@ -2,20 +2,22 @@
 */
 
 #include <stm32f0xx.h>
-#include <stm32f0xx_usart.h>
 
 #include "stypes.h"
 #include "utils.h"
 #include "params.h"
+#include "timers.h"
+
 #include "iso_shr.h"
+#include "iso.h"
 
 void rxw(u8 rxb, u32 ts);
 
-//ISO_IRQH : handler for ISO USART handler
+//ISO_IRQH : handler for all USART interrupts
 void ISO_IRQH(void) {
 	u32 ts;
 	ts = frclock;
-	//XXX check ints
+	//XXX check other ints?
 	//XXX signal error if RX while state && DUP_IDLE
 	if (USART_GetITStatus(ISO_UART, USART_IT_RXNE)) {
 		u8 rxb;
@@ -33,6 +35,18 @@ void ISO_IRQH(void) {
 			USART_ClearFlag(ISO_UART, USART_FLAG_ORE);
 			return;
 		}
+		//check noise flag
+		if (USART_GetFlagStatus(ISO_UART, USART_FLAG_NE)) {
+			//XXX do we care?
+			DBGM("ISO noise", 0);
+			USART_ClearFlag(ISO_UART, USART_FLAG_NE);
+		}
+		// check framing error (bad stop bit, etc)
+		if (USART_GetFlagStatus(ISO_UART, USART_FLAG_FE)) {
+			DBGM("ISO frame err", 0);
+			//XXX abort / break message build
+			return;
+		}
 
 		lock=sys_SDI();
 		if (dup_state == WAITDUPLEX) {
@@ -42,7 +56,7 @@ void ISO_IRQH(void) {
 				dup_state = DUP_ERR;
 			}
 			sys_RI(lock);
-			//XXX tail-chain into TX worker
+			isotx_work();
 			return;
 		}
 		sys_RI(lock);
@@ -57,5 +71,6 @@ void ISO_IRQH(void) {
 void rxw(u8 rxb, u32 ts) {
 
 	//XXX build message etc
+	DBGM("rxw ts:rxb", (ts & ~0xFF) | rxb);
 	return;
 }
