@@ -35,7 +35,14 @@ __attribute__((always_inline)) static inline u32 sys_SDI(void) {
 #define	DBGM(x,n)	dbg_log( __FILE__ ": " x, n)
 
 /************ misc ************/
+//big_error() : TODO : reset all periphs except USB, set error status
 void big_error(void);
+
+//dbg_log() : TODO, copy message to static error buf, readable by USB or debugger
 void dbg_log(const char * dm, int eno);
+
+//assert() : test assert, if failed log message && call big_error
+void _assertlog(const char *f1, const char *f2);
+#define assert(x) if (!(x)) _assertlog(__FILE__, __func__)
 
 #endif	//UTILS_H
