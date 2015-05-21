@@ -27,13 +27,17 @@ static struct {
 /** Duplex removal **/
 /*
  * For simple && safe access:
- * 1) rx: lock; if WAITDUPLEX && duplex match { state=DUP_IDLE;}; unlock; tailchain tx
+ * 1) rx: lock; if DUP_WAIT && duplex match { state=DUP_IDLE;}; unlock; tailchain tx
  * 2) tx: lock; check state && write duplex_req; write state=WAITDUP, unlock
 */
 
-//dup_state: WAITDUPLEX : next RX int checks duplex_req && set DUP_ERR or IDLE as required
-extern enum dupstate_t { DUP_IDLE, WAITDUPLEX, DUP_ERR} dup_state;
-extern u8 duplex_req;	//next byte expected if WAITDUPLEX
+/* dup_state:
+	-DUP_WAIT : next RX int checks duplex_req && set DUP_ERR or IDLE as required
+	-CHEAT :next RX int sets duplex_req to be parsed by txworker (instead of RX message builder)
+			--> this is for slow init
+*/
+extern enum dupstate_t { DUP_IDLE, DUP_WAIT, DUP_CHEAT, DUP_ERR} dup_state;
+extern u8 duplex_req;	//next byte expected if DUP_WAIT
 
 
 #endif

@@ -16,7 +16,8 @@ void txwork_setint(u16 ms, volatile u32 * CCR) {
 	u32 now;
 	//XXX TODO, and make sure no int is lost
 	assert((ms > 0) && (CCR != NULL));
-	//XXX disable tmr while doing this?
+	//clear flag before doing this (to ensure rising edge)?
+
 	now = TXWORK_TMR->CNT;
 	*CCR = now + ms;
 	return;

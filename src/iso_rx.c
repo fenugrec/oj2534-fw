@@ -49,12 +49,18 @@ void ISO_IRQH(void) {
 		}
 
 		lock=sys_SDI();
-		if (dup_state == WAITDUPLEX) {
+		if (dup_state == DUP_WAIT) {
 			if (rxb == duplex_req) {
 				dup_state = DUP_IDLE;
 			} else {
 				dup_state = DUP_ERR;
 			}
+			sys_RI(lock);
+			isotx_work();
+			return;
+		}
+		if (dup_state == DUP_CHEAT) {
+			duplex_req = rxb;
 			sys_RI(lock);
 			isotx_work();
 			return;

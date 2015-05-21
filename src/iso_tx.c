@@ -4,6 +4,7 @@
 #include <stddef.h>
 
 #include <stm32f0xx_tim.h>
+#include <stm32f0xx_usart.h>
 
 #include "stypes.h"
 #include "msg.h"
@@ -54,9 +55,9 @@ static struct  {
 	};
 
 /*** iso duplex removal (see iso_shr.h) ***/
-//when dup_state=WAITDUPLEX : next RX int checks duplex_req && set DUP_ERR or IDLE as required
+//when dup_state=DUP_WAIT : next RX int checks duplex_req && set DUP_ERR or IDLE as required
 enum dupstate_t dup_state=DUP_IDLE;
-u8 duplex_req;	//next byte expected if WAITDUPLEX
+u8 duplex_req;	//next byte expected if DUP_WAIT
 
 /*** iso init data ***/
 static u16 iso_initlen;	//1 for slow init, [datasize] for fastinit
@@ -273,7 +274,7 @@ static void _isotx_continue(void) {
 	} else {
 		//1) check duplex
 		switch (dup_state) {
-		case WAITDUPLEX:
+		case DUP_WAIT:
 			//no echo yet
 			if (guardtime >= DUPTIMEOUT * frclock_conv) {
 				//duplex timeout: unrecoverable
@@ -327,7 +328,7 @@ static void _isotx_continue(void) {
 
 	lock=sys_SDI();
 	duplex_req = nextbyte;
-	dup_state = WAITDUPLEX;
+	dup_state = DUP_WAIT;
 	sys_RI(lock);
 
 	ISO_UART->TDR = nextbyte;
@@ -386,6 +387,7 @@ void isotx_abort(void) {
 //isotx_init : TODO
 void isotx_init(void) {
 	//XXX set USART params, enable,
+	//Baud rates : divisor = 16bits,
 	//reset state, etc
 	return;
 }
@@ -411,6 +413,8 @@ static void _isotx_startinit(u16 len, u8 type) {
 	switch (type) {
 	case ISO_SLOWINIT:
 		assert(len == 1);
+		its.curlen = 1;
+		its.curpos = 0;	//1 addr byte
 		its.tx_state = SI;
 		iso_initstate = SI0;
 		break;
@@ -444,44 +448,91 @@ static void _isotx_slowi(void) {
 	switch (iso_initstate) {
 	case SI0: {
 		u32 guardtime;
-		//make sure W5 / Tidle is respected:
-		guardtime = (frclock - iso_ts.last_act) / frclock_conv;
-		if (guardtime < iso_initwait) {
-			txwork_setint(iso_initwait - guardtime, &ISO_TMR_CCR);
+		static uint bcount=0;	//counter for manual TX
+		u8 tempbyte;
+
+		//Can't set USART to 5bps because of 16bit divisor. bangbit instead
+
+		if (bcount == 0) {
+			//make sure W5 / Tidle is respected:
+			guardtime = (frclock - iso_ts.last_act);
+			if (guardtime < iso_initwait) {
+				txwork_setint((iso_initwait - guardtime) / frclock_conv, &ISO_TMR_CCR);
+				return;
+			}
+			USART_Cmd(ISO_UART, DISABLE);
+			//XXX adj pin funcs
+			// Only once : get addr
+			if (fifo_rblock(TXW, TXW_RP_ISO, &tempbyte, 1) != 1) {
+				DBGM("fifo_rb", frclock);
+				big_error();
+			}
+			//XXX TX=0 (bit 0 = startbit)
+			iso_ts.tx_started = frclock;
+			txwork_setint(200, &ISO_TMR_CCR);
+			bcount++;
 			return;
 		}
-		//XXX setup UART @ 5bps ? + start TX, waitduplex, etc.
-		return;
-		}
+		//here, bcount == 1, finished startbit
+		if (bcount <= 9) {
+			if (bcount == 9)
+				tempbyte = 1;	//bit 9 = stopbit
+			//LSB first.
+			if (tempbyte & 1) {
+				//XXX TX=1
+			} else {
+				//XXX TX=0
+			}
+			tempbyte = tempbyte >>1;
+			u32 elapsed_ms = (frclock - iso_ts.tx_started)/frclock_conv;
+			//next int in 200ms; adjust for starttime
+			u32 nextint = (bcount + 1)*200;
+			txwork_setint((u16)(nextint - elapsed_ms), &ISO_TMR_CCR);
+			bcount++;
+			return;
+		}	//bitloop
+		bcount = 0;	//reset for next time !!
+		} //codeblock
+
+		//XXX reset pin funcs, etc
+		USART_Cmd(ISO_UART, ENABLE);
+		//Here, we sent the address @ 5bps. No duplex echo to receive.
+
+		iso_initstate = SI2;	//skip SI1, due to bad planning
+		dup_state = DUP_CHEAT;	//steal next RX byte (0x55 sync)
+		//XXX set maxtimeout
 		break;
 	case SI1:
-		//XXX check addr duplex
-		//XXX reset UART speed etc
-		//XXX set "cheatduplex"
+		//XXX TODO : break up SI0 into chunks
 		break;
 	case SI2:
 		//XXX check sync byte 0x55
-		//cheatduplex
+		dup_state = DUP_CHEAT;	//for KB1
+		iso_initstate = SI3;
 		break;
 	case SI3:
 		//XXX get KB1
 		kb1 = duplex_req;
-		//XXX cheatduplex
+		dup_state = DUP_CHEAT;	//for KB2
+		iso_initstate = SI4;
 		break;
 	case SI4:
 		//XXX get KB2
 		kb2 = duplex_req;
 		//TX ~KB2;
-		//waitduplex;
+		dup_state = DUP_WAIT;
+		iso_initstate = SI5;
 		break;
 	case SI5:
 		//XXX check duplex;
-		//cheatduplex
+		dup_state = DUP_CHEAT;	//for ~addr
+		iso_initstate = SI6;
 		break;
 	case SI6:
-		//XXX check !addr
+		//XXX check ~addr
 		//XXX success: signal kb1,kb2
 		DBGM("kb1:kb2", kb1<<8 | kb2);
+		iso_initstate = INIT_IDLE;
 		break;
 	default:
 		DBGM("bad SI state", iso_initstate);
