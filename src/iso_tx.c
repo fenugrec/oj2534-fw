@@ -43,8 +43,7 @@ static void _isotx_done(void);
 //only read / modified by txw or its support functions
 
 static struct  {
-	enum txs { TX_IDLE, FI, SI, TX} tx_state;
-	//following members are valid only if tx_state == TX
+	enum txs { TX_IDLE, FI, SI, TX} tx_state;	//following members are valid only if tx_state == TX
 	enum txm {TXM_FIFO, TXM_PMSG} tx_mode;	//determines how to fetch data
 	uint pm_id;	//if _mode==PMSG : current msgid (set in _findpmsg)
 	u8 *pm_data;	//if _mode==PMSG : temp ptr to pmsg data
@@ -178,27 +177,15 @@ void isotx_work(void) {
 //calls _isotx_start() && ret 0 if ok
 //ret -1 if failed
 static int _isotx_findpmsg(void) {
-	uint pmsg_id;
-	for (pmsg_id=0; pmsg_id < PMSG_MAXNUM; pmsg_id++) {
-		if (!pmsg_claim(pmsg_id)) {
-			u8 *pmsg_data;
-			uint pmsg_len;
-			//found & claimed a queued message; can we handle it?
-			if (pmsg_getproto(pmsg_id) != MP_ISO) {
-				pmsg_release(pmsg_id);
-				continue;
-			}
-			pmsg_data = pmsg_getmsg(pmsg_id, &pmsg_len);
-			if (pmsg_data == NULL) {
-				pmsg_release(pmsg_id);
-				DBGM("bad pmsg?", pmsg_id);
-				continue;
-			}
-			_isotx_start(pmsg_len, pmsg_len * DEFTIMEOUT, pmsg_data);
-			its.pm_id = pmsg_id;
-			return 0;
-		}
-	}	//for (pmsg)
+	u8 * pm_data;
+	uint pm_len;
+
+	pm_data = pmsg_claim(MP_ISO, &pm_len, &its.pm_id);
+	if ( pm_data != NULL) {
+		its.tx_mode = TXM_PMSG;
+		_isotx_start(pm_len, pm_len * DEFTIMEOUT, pm_data);
+		return 0;
+	}
 	return -1;	//no pmsg claimed & started
 }
 
@@ -352,8 +339,8 @@ static void _isotx_continue(void) {
 // TODO : merge with _abort ?
 static void _isotx_done(void) {
 	if (its.tx_mode == TXM_PMSG) {
-		pmsg_release(its.pm_id);
 		pmsg_unq(its.pm_id);
+		pmsg_release(its.pm_id);
 	}
 	its.tx_state = TX_IDLE;
 	iso_ts.last_TX = frclock;
@@ -370,7 +357,7 @@ void isotx_abort(void) {
 	USART_Cmd(ISO_UART, DISABLE);	//clears UE
 	//XXX reset speed? (in case slowinit clobbered it)
 	//XXX clear TX break
-	if (its.tx_state == TX) {
+	if ((its.tx_state == TX) && (its.tx_mode == TXM_FIFO)) {
 		uint skiplen = its.curlen - its.curpos;
 		if (fifo_skip(TXW, TXW_RP_ISO, skiplen) != skiplen ) {
 			//can't skip current block ?
@@ -385,9 +372,15 @@ void isotx_abort(void) {
 }
 
 //isotx_init : TODO
+//call only on reset or after isotx_abort.
 void isotx_init(void) {
-	//XXX set USART params, enable,
-	//Baud rates : divisor = 16bits,
+	//XXX set USART params,
+	//Baud rates : divisor = 16bits, etc
+	USART_Cmd(ISO_UART, ENABLE);
+	its.tx_state = TX_IDLE;
+	its.curpos = 0;
+	its.curlen = 0;
+	iso_initstate = INIT_IDLE;
 	//reset state, etc
 	return;
 }

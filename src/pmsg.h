@@ -31,24 +31,14 @@ void PMSG_IRQH(void);
 //for use by USB command dispatch
 int pmsg_del(uint id);
 
-//set BUSY flag; ret 0 if ok, -1 if error (PMSG not enabled, or not queued etc)
-//caller can loop through valid IDs to find next queued msg
-//once a pmsg is claimed, it's protected from modif + deletion
-int pmsg_claim(uint id);
+//find,claim, get info for a pmsg with proto <mprot> and is queued for TX
+// rets ptr to data and sets len if success, NULL if no msg claimed.
+u8 * pmsg_claim(enum msgproto mprot, uint *len, uint *pmid);
 
 //clear BUSY flag, delete message if queued for del; always succed
 void pmsg_release(uint id);
 
 //clear TXQ flag: always succeed
 void pmsg_unq(uint id);
-
-//get proto of req'd message.
-//caller MUST have claimed the msg first
-enum msgproto pmsg_getproto(uint id);
-
-//get data ptr + datalen for req'd message.
-// caller MUST have claimed the msg first
-//ret NULL if error || disabled
-u8 * pmsg_getmsg(uint id, uint *len);
 
 #endif	//PMSG_H

@@ -1,6 +1,7 @@
 // pmsg.c
 /************ periodic msg shits ************/
 //TODO : pmsg_add() stuff
+//TODO : improve deletion for busy messages... maybe have caller copy data instead of claim/release?
 
 #include <stddef.h>
 
@@ -27,14 +28,15 @@ struct pmsg_desc {
 	u8 data[PMSG_MAX_SIZE];
 };
 
-/* private funcs */
 void pmsg_work(void);
 
 // PMSG ids = 0 to (PMSG_MAXNUM -1)
 static struct pmsg_desc pmsg_table[PMSG_MAXNUM];	//all possible periodic msgs.
 
+/* private funcs */
+
 //rearm : set PMSG_TMR to expire in 'next' ms
-//(internal use only?)
+//(internal use only)
 static void _pmsg_rearm(u16 next) {
 	PMSG_TMR->CNT = next;
 	//XXX set reload repeats to 1 + start
@@ -51,17 +53,18 @@ void PMSG_IRQH(void) {
 	return;
 }
 
-//worker, called by IRQH handler (TMR expiry)
-//TODO : serialize;  prevent re-entry;  allow polling/call-on-demand (for adding msgs...)
+//worker, called by IRQH handler (TMR expiry). Tolerates polling but not recursion
+//TODO : serialize;  prevent re-entry;
 void pmsg_work(void) {
 	static u16 pmsg_countdown[ARRAY_SIZE(pmsg_table)];	//countdown=0 means disabled
-	static int idx_next;	//id of expired countdown
-	u16 min;
+	static u32 last_run=0;	//frclock @ last countdown update.
+	u16 delta_ms;		//ms elapsed since last countdown update
 	u16 newmin;	//finding next "soonest" msg
 	u32 pflags;
 	u32 lock;
 
-	min = pmsg_countdown[idx_next];	//this has just elapsed;
+	delta_ms = (frclock - last_run) / frclock_conv;	//OK cast if <65536 ms !
+
 	newmin = (u16) -1;
 
 	lock=sys_SDI();	//yuck, but no choice
@@ -72,25 +75,24 @@ void pmsg_work(void) {
 			pmsg_countdown[i]=0;
 			continue;
 		}
-		if (pmsg_countdown[i] <= min) {
+		if (pmsg_countdown[i] <= delta_ms) {
 			//queue + reload all due msgs
 			pflags |= PMSG_TXQ;
 			pmsg_table[i].flags = pflags;
 			pmsg_countdown[i] = (u16) (pflags & PMSG_PERMASK);
-
 		} else {
 			//decrement others
-			pmsg_countdown[i] -= min;
+			pmsg_countdown[i] -= delta_ms;
 		}
 		// find next soonest && enabled msgid.
-		if (pmsg_countdown[i] < newmin) {
+		if (pmsg_countdown[i] <= newmin) {
 			newmin = pmsg_countdown[i];
-			idx_next = i;
 		}
-	}
+	}	//for pmsg_table
+	last_run = frclock;
 	sys_RI(lock);
 
-	_pmsg_rearm(pmsg_countdown[idx_next]);	//reload + restart tmr
+	_pmsg_rearm(newmin);	//reload + restart tmr
 	return;
 }
 
@@ -119,30 +121,12 @@ int pmsg_del(uint id) {
 	return rv;
 }
 
-//set BUSY flag; ret 0 if ok, -1 if error (PMSG not enabled, or not queued etc)
-int pmsg_claim(uint id) {
-	u32 lock;
-	u32 pflags;
-	int rv;
-	if (id >= ARRAY_SIZE(pmsg_table)) return -1;
-	lock=sys_SDI();
-	pflags = pmsg_table[id].flags;
-	if (((pflags & PMSG_ENABLED) ==0) ||
-		((pflags & PMSG_TXQ) == 0)) {
-		rv = -1;
-	} else {
-		pmsg_table[id].flags = pflags | PMSG_BUSY;
-		rv = 0;
-	}
-	sys_RI(lock);
-	return rv;
-}
 
-//clear BUSY flag, delete message if queued for del; always succed
+//clear BUSY flag, delete message if queued for del; always succeed
 void pmsg_release(uint id) {
 	u32 lock;
 	u32 pflags;
-	if (id >= ARRAY_SIZE(pmsg_table)) return;
+	assert(id < ARRAY_SIZE(pmsg_table));
 	lock=sys_SDI();
 	pflags = pmsg_table[id].flags;
 	if (pflags & PMSG_DELQ) pflags = 0;
@@ -154,41 +138,37 @@ void pmsg_release(uint id) {
 //clear TXQ flag: always succeed
 void pmsg_unq(uint id) {
 	u32 lock;
-	if (id >= ARRAY_SIZE(pmsg_table)) return;
+	assert(id < ARRAY_SIZE(pmsg_table));
 	lock=sys_SDI();
 	pmsg_table[id].flags &= ~PMSG_TXQ;
 	sys_RI(lock);
 	return;
 }
 
-//get proto of req'd message.
-//caller MUST have claimed the msg first
-enum msgproto pmsg_getproto(uint id) {
-	u32 pflags;
-	if (id >= ARRAY_SIZE(pmsg_table)) return MP_INVALID;
-	pflags = pmsg_table[id].flags;
-	if ((pflags & PMSG_ENABLED) ==0 ||
-		(pflags & PMSG_BUSY) ==0 ) return MP_INVALID;
-	return (enum msgproto) ((pflags & PMSG_PROTOMASK) >> PMSG_PROTOSHIFT);
-}
-
-//get data ptr + datalen for req'd message.
-// caller MUST have claimed the msg first
-//ret NULL if error || disabled || unclaimed
-u8 * pmsg_getmsg(uint id, uint *len) {
-	u32 pflags;
+//find,claim, get info for a pmsg with proto <mprot> and is queued for TX
+// rets ptr to data and sets len, pmid if success. ret NULL if no msg claimed.
+u8 * pmsg_claim(enum msgproto mprot, uint *len, uint *pmid) {
 	u32 lock;
-	if (id >= ARRAY_SIZE(pmsg_table) ||
-		len==NULL) return NULL;
-	lock=sys_SDI();
-	pflags = pmsg_table[id].flags;
-	if ((pflags & PMSG_ENABLED) ==0 ||
-		(pflags & PMSG_BUSY) ==0 ) {
-		sys_RI(lock);
-		return NULL;
-	}
-	sys_RI(lock);	//we can unlock since we confirmed msg is claimed
+	uint id;
+	u32 pflags;
+	u8 * rv;
 
-	*len = (pflags & PMSG_LENMASK) >> PMSG_LENSHIFT;
-	return pmsg_table[id].data;
+	lock=sys_SDI();
+	for (id=0; id < ARRAY_SIZE(pmsg_table); id++) {
+		pflags = pmsg_table[id].flags;
+		if (((pflags & PMSG_ENABLED) ==0) ||
+			((pflags & PMSG_TXQ) == 0)) {
+			continue;
+		}
+		if ( ((pflags & PMSG_PROTOMASK) >> PMSG_PROTOSHIFT) == mprot) {
+			pmsg_table[id].flags = pflags | PMSG_BUSY;
+			sys_RI(lock);
+			rv = pmsg_table[id].data;
+			*len = (pflags & PMSG_LENMASK) >> PMSG_LENSHIFT;
+			*pmid = id;
+			return rv;
+		}
+	}	//for (pmsg)
+	sys_RI(lock);
+	return NULL;
 }
