@@ -66,25 +66,12 @@ static enum initstate_t {INIT_IDLE, FI0, FI1, FI2, SI0, SI1, SI2, SI3, SI4, SI5,
 
 /* isotx_work() : tx worker for ISO9141/ISO14230
   Should tolerate being polled continuously?
-  Called from:
-		-a self-settable TMR expiry IRQ;
-		-RX IRQ (for de-duplexing)
-		-(XXX)? UART TX done IRQ ? depends on slowinit impl
+  Called ONLY from: the self-settable TMR match IRQ.
+	isotx_qwork() can be used to force the interrupt pending bit
 */
 void isotx_work(void) {
 	struct txblock txb;	//de-serialize blocks from fifo
 	u16 bsize, tout;	//msg length, timeout(ms)
-	static _Bool autoq=0, busy=0 ;	//to recurse max once
-	u32 lock;
-
-	lock=sys_SDI();
-	if (busy) {
-		autoq = 1;	// already running : queue but do not re-enter !
-		sys_RI(lock);
-		return;
-	}
-	busy=1;
-	sys_RI(lock);
 
 	switch (its.tx_state) {
 	case TX:
@@ -159,16 +146,14 @@ void isotx_work(void) {
 		break;
 	}	//switch txstate
 
-	lock=sys_SDI();
-	busy = 0;
-	if (autoq) {
-		isotx_work();	//XXX ugly partial recursion
-		autoq = 0;
-	}
-	sys_RI(lock);
 	return;
 }
 
+//isotx_qwork() : queue TX worker interrupt
+void isotx_qwork(void) {
+	TXWORK_TMR->EGR = ISO_TMR_CCG;	//force CC1IF flag
+	return;
+}
 /*********** ISO TX STUFF *********/
 //ptet fitter dans un autre fihier ?
 

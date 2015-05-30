@@ -11,16 +11,20 @@
 
 #include "fifos.h"
 #include "iso.h"
+#include "timers.h"
+#include "pmsg.h"
 
 void SystemInit(void) {}
 
 int main(void) {
 
+	timers_init();
 	fifo_init();
 	isotx_init();
+	pmsg_init();
 
 	while (1) {
-		isotx_work();
+		isotx_qwork();
 	}
 	return 0;
 }

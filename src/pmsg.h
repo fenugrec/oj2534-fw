@@ -14,6 +14,9 @@ Techniques :
 	- 3: int every X ms, check every msgtimer expiry, queue msg... prob=overhead
 	- 2: sort msgs, set tmr for next due - less overhead. ==> flawed !
 	-> 1: maintain "countdown" for each pmsg, int on next "most soonest"
+
+TODO : pmsg_del + on a claimed message... async completion notif ?
+TODO : merge pmsg_release && pmsg_unq ?
 */
 
 #include "stypes.h"
@@ -24,15 +27,19 @@ Techniques :
 
 /* func protos */
 
-// PMSG_IRQH : semi-low prio INT on TMRx overflow/expiry.
-void PMSG_IRQH(void);
+//pmsg_init : clear data, setup tmr
+void pmsg_init(void);
+
+//attempt to add a msg in slot 'id'
+//ret 0 if ok
+int pmsg_add(uint id, enum msgproto mp, u16 per, uint len, u8 *data);
 
 //delete or queue for deletion a pmsg; return -1 if queued, 0 if ok
 //for use by USB command dispatch
 int pmsg_del(uint id);
 
-//find,claim, get info for a pmsg with proto <mprot> and is queued for TX
-// rets ptr to data and sets len if success, NULL if no msg claimed.
+//find,claim, get info for a queued pmsg with proto <mprot>;
+// rets ptr to data + sets len and pmid if success, NULL if no msg claimed.
 u8 * pmsg_claim(enum msgproto mprot, uint *len, uint *pmid);
 
 //clear BUSY flag, delete message if queued for del; always succed

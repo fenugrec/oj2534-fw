@@ -20,7 +20,7 @@ static struct {
 	u32	last_RX;
 	u32	last_TX;
 	u32	tx_started;	//frclock at beginning of tx or init
-	u32	tx_timeout;	//timeout if (frclock - tx_started) >= tx_timeout.
+	u32	tx_timeout;	//timed out if (frclock - tx_started) >= tx_timeout.
 } iso_ts = {0};
 
 
@@ -33,7 +33,7 @@ static struct {
 
 /* dup_state:
 	-DUP_WAIT : next RX int checks duplex_req && set DUP_ERR or IDLE as required
-	-CHEAT :next RX int sets duplex_req to be parsed by txworker (instead of RX message builder)
+	-CHEAT :next RX int writes byte to duplex_req to be parsed by txworker (instead of RX message builder)
 			--> this is for slow init
 */
 extern enum dupstate_t { DUP_IDLE, DUP_WAIT, DUP_CHEAT, DUP_ERR} dup_state;

@@ -56,13 +56,13 @@ void ISO_IRQH(void) {
 				dup_state = DUP_ERR;
 			}
 			sys_RI(lock);
-			isotx_work();
+			isotx_qwork();
 			return;
 		}
 		if (dup_state == DUP_CHEAT) {
 			duplex_req = rxb;
 			sys_RI(lock);
-			isotx_work();
+			isotx_qwork();
 			return;
 		}
 		sys_RI(lock);
