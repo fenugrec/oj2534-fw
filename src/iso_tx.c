@@ -3,7 +3,6 @@
 
 #include <stddef.h>
 
-#include <stm32f0xx_tim.h>
 #include <stm32f0xx_usart.h>
 
 #include "stypes.h"
@@ -60,7 +59,7 @@ u8 duplex_req;	//next byte expected if DUP_WAIT
 
 /*** iso init data ***/
 static u16 iso_initlen;	//1 for slow init, [datasize] for fastinit
-static u32 iso_initwait;	//required idle before init (ms*frclock_conv)
+static u16 iso_initwait;	//required idle before init (ms)
 //iso_initstate: statemachine for slow/fast inits. FI* : fast init states, SI* = slowinit states
 static enum initstate_t {INIT_IDLE, FI0, FI1, FI2, SI0, SI1, SI2, SI3, SI4, SI5, SI6} iso_initstate=INIT_IDLE;
 
@@ -96,8 +95,7 @@ void isotx_work(void) {
 
 		//get hdr + blocksize
 		if (fifo_cblock(TXW, TXW_RP_ISO, (u8 *) &txb, 3) != 3) {
-			//probably an incomplete txblock
-			//XXX don't auto-poll ?
+			//probably an incomplete txblock, or nothing. Don't auto-poll.
 			return;
 		}
 		if ((txb.hdr & TXB_SENDABLE) ==0) {
@@ -138,7 +136,7 @@ void isotx_work(void) {
 			//bad proto ==> skip block.
 			(void) fifo_skip(TXW, TXW_RP_ISO, bsize + TXB_DATAPOS);
 				//this isn't an error : there could be no additional blocks, so fifo_skip would fail...
-			// XXX set next int, etc
+			// XXX set next int (auto-poll ?), etc
 			return;
 		}
 		break;	//case TX_IDLE
@@ -149,7 +147,7 @@ void isotx_work(void) {
 	return;
 }
 
-//isotx_qwork() : queue TX worker interrupt
+//isotx_qwork() : queue TX worker interrupt. XXX TODO : merge with setinit(0) ?
 void isotx_qwork(void) {
 	TXWORK_TMR->EGR = ISO_TMR_CCG;	//force CC1IF flag
 	return;
@@ -199,11 +197,11 @@ static void _isotx_start(uint len, u16 timeout, u8 * optdata) {
 	iso_ts.tx_started = frclock;
 	iso_ts.tx_timeout = timeout * frclock_conv;
 
-	guardtime = (frclock - iso_ts.last_act);
-	if (guardtime < (tparams.p3min * frclock_conv)) {
-		//XXX set next int(tparams.p3min*frclock_conv - guardtime);
+	guardtime = (frclock - iso_ts.last_act) / frclock_conv;
+	if (guardtime < tparams.p3min) {
+		txwork_setint(tparams.p3min - guardtime, &ISO_TMR_CCR);
 	} else {
-		//XXX set pending int to re-enter ? or 1ms
+		isotx_qwork();	//re-enter
 	}
 	return;
 }
@@ -234,13 +232,13 @@ static void _isotx_continue(void) {
 		return;
 	}
 
-	guardtime = (frclock - iso_ts.last_act);
+	guardtime = (frclock - iso_ts.last_act) / frclock_conv;
 
 	if (its.curpos == 0) {
 		//if nothing sent yet :
 		//make sure guard time is OK for first transmit (p3min in case iso_ts.last_act changed recently)
-		if (guardtime < (tparams.p3min * frclock_conv)) {
-			//XXX set next int(tparams.p3min*frclock_conv - guardtime);
+		if (guardtime < tparams.p3min) {
+			txwork_setint(tparams.p3min - guardtime, &ISO_TMR_CCR);
 			return;
 		}
 	} else {
@@ -248,7 +246,7 @@ static void _isotx_continue(void) {
 		switch (dup_state) {
 		case DUP_WAIT:
 			//no echo yet
-			if (guardtime >= DUPTIMEOUT * frclock_conv) {
+			if (guardtime >= DUPTIMEOUT ) {
 				//duplex timeout: unrecoverable
 				DBGM("No duplex", duplex_req);
 				isotx_abort();
@@ -273,8 +271,8 @@ static void _isotx_continue(void) {
 			break;
 		}
 		//2) enforce P4
-		if (guardtime < (tparams.p4min * frclock_conv)) {
-			//XXX set next int (tparams.p4min * frclock_conv - guardtime)
+		if (guardtime < tparams.p4min) {
+			txwork_setint(tparams.p4min - guardtime, &ISO_TMR_CCR);
 			return;
 		}
 	}
@@ -311,7 +309,7 @@ static void _isotx_continue(void) {
 	iso_ts.last_TX = iso_ts.last_act;
 
 	guardtime = (DUPTIMEOUT > tparams.p4min)? DUPTIMEOUT : tparams.p4min ;
-	//XXX set int(guardtime);
+	txwork_setint(guardtime, &ISO_TMR_CCR);
 	//if operating with P4<DUPTIMEOUT, either RX IRQH will tailchain into txw,
 	// or guardtime IRQ will run txw
 	return;
@@ -383,7 +381,6 @@ static void _isotx_startinit(u16 len, u8 type) {
 
 	//safe, although suboptimal: wait for longest of W5 or Tidle
 	iso_initwait = (tparams.w5 < tparams.tidle)? tparams.tidle:tparams.w5;
-	iso_initwait *= frclock_conv;
 
 	iso_initlen = len;
 	iso_ts.tx_started = now;
@@ -405,7 +402,7 @@ static void _isotx_startinit(u16 len, u8 type) {
 		big_error();
 		break;
 	}
-	//XXX set txw to re-enter
+	isotx_qwork();
 	return;
 }
 
@@ -427,15 +424,16 @@ static void _isotx_slowi(void) {
 	case SI0: {
 		u32 guardtime;
 		static uint bcount=0;	//counter for manual TX
+		static u32 pstart;	//timestamp for start of tx
 		u8 tempbyte;
 
 		//Can't set USART to 5bps because of 16bit divisor. bangbit instead
 
 		if (bcount == 0) {
 			//make sure W5 / Tidle is respected:
-			guardtime = (frclock - iso_ts.last_act);
+			guardtime = (frclock - iso_ts.last_act) / frclock_conv;
 			if (guardtime < iso_initwait) {
-				txwork_setint((iso_initwait - guardtime) / frclock_conv, &ISO_TMR_CCR);
+				txwork_setint(iso_initwait - guardtime, &ISO_TMR_CCR);
 				return;
 			}
 			USART_Cmd(ISO_UART, DISABLE);
@@ -446,12 +444,19 @@ static void _isotx_slowi(void) {
 				big_error();
 			}
 			//XXX TX=0 (bit 0 = startbit)
-			iso_ts.tx_started = frclock;
+			pstart = frclock;
 			txwork_setint(200, &ISO_TMR_CCR);
 			bcount++;
 			return;
 		}
-		//here, bcount == 1, finished startbit
+		//here, bcount == 1, finished startbit.
+		//adjust bit times : continue only if (bcount * 200ms) has elapsed.
+		guardtime = (frclock - pstart) / frclock_conv;
+		if (guardtime < (bcount * 200)) {
+			txwork_setint((bcount * 200) - guardtime, &ISO_TMR_CCR);
+			return;
+		}
+
 		if (bcount <= 9) {
 			if (bcount == 9)
 				tempbyte = 1;	//bit 9 = stopbit
@@ -462,10 +467,7 @@ static void _isotx_slowi(void) {
 				//XXX TX=0
 			}
 			tempbyte = tempbyte >>1;
-			u32 elapsed_ms = (frclock - iso_ts.tx_started)/frclock_conv;
-			//next int in 200ms; adjust for starttime
-			u32 nextint = (bcount + 1)*200;
-			txwork_setint((u16)(nextint - elapsed_ms), &ISO_TMR_CCR);
+			txwork_setint(200, &ISO_TMR_CCR);
 			bcount++;
 			return;
 		}	//bitloop
@@ -522,6 +524,9 @@ static void _isotx_slowi(void) {
 //_fasti : fast init; called by iso txworker
 //maintain current state of fast init; when WUP is done start normal TX for StartComm request
 static void _isotx_fasti(void) {
+	u32 guardtime;
+	static u32 wupc;	//tune tWUP
+
 	//check if init time was exceeded :
 	if ((frclock - iso_ts.tx_started) >= iso_ts.tx_timeout) {
 		iso_initstate = INIT_IDLE;
@@ -533,30 +538,41 @@ static void _isotx_fasti(void) {
 	}
 
 	switch (iso_initstate) {
-	case FI0: {
-		u32 guardtime;
+	case FI0:
 		//make sure guard time is respected:
-		guardtime = (frclock - iso_ts.last_act);
+		guardtime = (frclock - iso_ts.last_act) / frclock_conv;
 		if (guardtime < iso_initwait) {
-			//XXX set next int(iso_initwait - guardtime);
+			txwork_setint(iso_initwait - guardtime, &ISO_TMR_CCR);
 			return;
 		}
 		//start WUP (W5 or Tidle already elapsed)
 		//XXX disable UART;
 		//XXX set tx_break;
-		//XXX set next int(tparams.tinil);
+		wupc = frclock;	//timestamp WUPstart
+		txwork_setint(tparams.tinil, &ISO_TMR_CCR);
 		iso_initstate = FI1;
-		}
 		break;
 	case FI1:
-		//get here after tINI_L (break on TX for fast init)
+		//validate tINI_L (break on TXD for fast init)
+		guardtime = (frclock - wupc) / frclock_conv;
+		if (guardtime < tparams.tinil) {
+			txwork_setint(tparams.tinil - guardtime, &ISO_TMR_CCR);
+			return;
+		}
 		//XXX clear TX_break;
-		//XXX set next int(tparams.twup - tparams.tinil);
+		guardtime = (frclock - wupc)/frclock_conv;	//true tiniL (ms)
+		txwork_setint(tparams.twup - guardtime, &ISO_TMR_CCR);
 		iso_initstate = FI2;
 		break;
 	case FI2:
 		//after tWUP : TX request using standard mechanism
 		//typically we're sending a StartComm req; the response is treated as a normal RX msg
+		//validate tWUP
+		guardtime = (frclock - wupc) / frclock_conv;	//true tWUP (ms)
+		if (guardtime < tparams.twup) {
+			txwork_setint(tparams.twup - guardtime, &ISO_TMR_CCR);
+			return;
+		}
 		//XXX purge RX bufs
 		//XXX enable USART;
 		iso_initstate = INIT_IDLE;

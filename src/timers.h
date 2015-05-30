@@ -41,6 +41,7 @@ Timestamps : either SOF (CAN), or "end of last bit of msg" (ISO)
 
 #define ISO_TMR_CCR	TXWORK_TMR->CCR1
 #define ISO_TMR_CCIF	TIM_FLAG_CC1
+#define ISO_TMR_CC_IT	TIM_IT_CC1
 #define ISO_TMR_CCG	TIM_EGR_CC1G
 //#define CAN_TMR_CCR	TXWORK_TMR->CCR2
 //#define CAN_TMR_CCIF	TIM_FLAG_CC2
@@ -57,5 +58,8 @@ void timers_init(void);
 //txwork_setint() : interrupt in <ms> ms
 void txwork_setint(u16 ms, volatile u32 * CCR);
 
+/* pmsg funcs */
+//pmsg_setint() : interrupt once, in <next> ms
+void pmsg_setint(u16 next);
 
 #endif	//TIMERS_H

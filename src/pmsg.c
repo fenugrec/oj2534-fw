@@ -35,29 +35,19 @@ void pmsg_work(void);
 // PMSG ids = 0 to (PMSG_MAXNUM -1)
 static struct pmsg_desc pmsg_table[PMSG_MAXNUM];	//all possible periodic msgs.
 
-/* private funcs */
-
-//rearm : set PMSG_TMR to expire in 'next' ms
-//(internal use only)
-static void _pmsg_rearm(u16 next) {
-	assert(next > 0);
-	PMSG_TMR->CNT = next;
-	TIM_Cmd(PMSG_TMR, ENABLE);
-	return;
-}
 
 /*************/
 /* technique 1 : maintain countdowns per PMSG, int on next soonest, and set PMSG_TXQ flag.
  *
  */
 
-//clear pmsg table; set up tmr
+//clear pmsg table
 void pmsg_init(void) {
 
 	for (uint i=0; i< ARRAY_SIZE(pmsg_table); i++) {
 		pmsg_table[i].flags = 0;
 	}
-
+	return;
 }
 
 //PMSG_IRQH : semi-low prio INT on TMRx overflow/expiry.
@@ -105,7 +95,7 @@ void pmsg_work(void) {
 	last_run = frclock;
 	sys_RI(lock);
 
-	_pmsg_rearm(newmin);	//reload + restart tmr
+	pmsg_setint(newmin);	//reload + restart tmr
 	return;
 }
 
@@ -184,6 +174,7 @@ void pmsg_unq(uint id) {
 
 //find,claim, get info for a pmsg with proto <mprot> and is queued for TX
 // rets ptr to data and sets len, pmid if success. ret NULL if no msg claimed.
+//TODO : remove claim / release mechanism; copy data to worker's buffer instead ?
 u8 * pmsg_claim(enum msgproto mprot, uint *len, uint *pmid) {
 	u32 lock;
 	uint id;

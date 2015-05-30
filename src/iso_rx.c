@@ -70,7 +70,7 @@ void ISO_IRQH(void) {
 		iso_ts.last_RX = ts;
 		rxw(rxb, ts);
 		return;
-	}
+	}	//if RXNE
 	return;
 }
 //RX worker; received byte rxb @ time ts (units of frclock)

@@ -15,6 +15,7 @@ Techniques :
 	- 2: sort msgs, set tmr for next due - less overhead. ==> flawed !
 	-> 1: maintain "countdown" for each pmsg, int on next "most soonest"
 
+TODO : copy pmsg data instead of claim/release crap ?
 TODO : pmsg_del + on a claimed message... async completion notif ?
 TODO : merge pmsg_release && pmsg_unq ?
 */

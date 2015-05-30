@@ -24,7 +24,7 @@ int main(void) {
 	pmsg_init();
 
 	while (1) {
-		isotx_qwork();
+		isotx_qwork();	//also call qwork on txb reception etc
 	}
 	return 0;
 }
