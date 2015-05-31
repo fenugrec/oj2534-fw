@@ -79,7 +79,7 @@ UDEFS =
 UADEFS =
 
 # Root directories
-LIBSDIR    = d:/dcs/el/stm32/STM32F0xx_SPL150/Libraries/
+LIBSDIR    = /dcs/el/stm32/STM32F0xx_SPL150/Libraries/
 STMSPDDIR    = $(LIBSDIR)STM32F0xx_StdPeriph_Driver/
 
 #inc + lib dirs
@@ -169,7 +169,7 @@ LIBS    = $(DLIBS) $(ULIBS)
 
 
 # Generate dependency information
-CPFLAGS += -MD -MP -MF .dep$(@F).d
+CPFLAGS += -MD -MP -MF .dep/$(@F).d
 
 #
 # makefile rules
@@ -232,5 +232,5 @@ gdbn:
 #
 #-include $(shell mkdir .dep 2>/dev/null) $(wildcard .dep/*)
 #23-July-2012 /dev/null gives an error on Win 7 64-bit : Hussam
--include $(shell mkdir -p .dep) $(wildcard .dep/*)
+-include $(shell mkdir .dep) $(wildcard .dep/*)
 # *** EOF ***

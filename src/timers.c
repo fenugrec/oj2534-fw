@@ -1,10 +1,8 @@
 /* Common code for timer resources */
-//XXX todo : (auto)calculate prescaler values
-
-/* defines to facilitate RAMbuilds */
-//#define DISABLE_ISO	//prevents calls to isotx_work
 
 #include <stddef.h>
+
+#include "oj2534.h"
 
 #include <stm32f0xx.h>
 #include <stm32f0xx_tim.h>
@@ -31,10 +29,10 @@ static void frclock_init(void) {
 
 	NVIC_DisableIRQ(IRQN_FRCLOCK);
 	RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM2, ENABLE);
-	tbi.TIM_ClockDivision = TIM_CKD_DIV1;	//XXX a calcular
+	tbi.TIM_ClockDivision = TIM_CKD_DIV1;
 	tbi.TIM_CounterMode = TIM_CounterMode_Up;
 	tbi.TIM_Period = -1;
-	tbi.TIM_Prescaler = 0;	//XXX a calcular
+	tbi.TIM_Prescaler = (SystemCoreClock / (1000 * frclock_conv)) - 1;	//100us incs
 	//tbi.TIM_RepetitionCounter	//irrelevant on TIM2
 	TIM_TimeBaseInit(FRCLOCK_TMR, &tbi);
 	FRCLOCK_TMR->CNT = 0;
@@ -49,10 +47,10 @@ static void txwork_timer_init(void) {
 	NVIC_DisableIRQ(IRQN_TXWORK);
 	RCC_APB1PeriphClockCmd(TXWORK_APBC, ENABLE);
 	TXWORK_TMR->DIER = 0;	//disable all ints
-	tbi.TIM_ClockDivision = TIM_CKD_DIV1;	//XXX calc
+	tbi.TIM_ClockDivision = TIM_CKD_DIV1;
 	tbi.TIM_CounterMode = TIM_CounterMode_Up;
 	tbi.TIM_Period = -1;
-	tbi.TIM_Prescaler = 0;	//XXX a calcular
+	tbi.TIM_Prescaler = (SystemCoreClock / 1000) -1;	//1ms incs
 	//tbi.TIM_RepetitionCounter	//irrelevant on TIM3
 	TIM_TimeBaseInit(TXWORK_TMR, &tbi);
 	TXWORK_TMR->CNT = 0;
@@ -101,10 +99,10 @@ static void pmsg_timer_init(void) {
 	RCC_APB2PeriphClockCmd(PMSG_APBC, ENABLE);
 	TIM_Cmd(PMSG_TMR, DISABLE);
 
-	tbi.TIM_ClockDivision = TIM_CKD_DIV1;	//XXX calc
+	tbi.TIM_ClockDivision = TIM_CKD_DIV1;
 	tbi.TIM_CounterMode = TIM_CounterMode_Down;
 	tbi.TIM_Period = -1;
-	tbi.TIM_Prescaler = 0;	//XXX a calcular
+	tbi.TIM_Prescaler = (SystemCoreClock / 1000) -1;	//1ms incs
 	tbi.TIM_RepetitionCounter = 0;
 	TIM_TimeBaseInit(PMSG_TMR, &tbi);
 
