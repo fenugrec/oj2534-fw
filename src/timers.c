@@ -1,5 +1,9 @@
 /* Common code for timer resources */
 //XXX todo : (auto)calculate prescaler values
+
+/* defines to facilitate RAMbuilds */
+//#define DISABLE_ISO	//prevents calls to isotx_work
+
 #include <stddef.h>
 
 #include <stm32f0xx.h>
@@ -62,7 +66,9 @@ void TXWORK_TMR_IRQH(void) {
 	if (TXWORK_TMR->SR & ISO_TMR_CCIF) {
 		TIM_ITConfig(TXWORK_TMR, ISO_TMR_CC_IT, DISABLE);
 		TIM_ClearFlag(TXWORK_TMR, ISO_TMR_CCIF);
+#ifndef DISABLE_ISO
 		isotx_work();
+#endif
 	} else {
 		DBGM("bad TXW int", TXWORK_TMR->SR);
 	}

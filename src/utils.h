@@ -40,7 +40,7 @@ void big_error(void);
 void dbg_log(const char * dm, int eno);
 
 //assert() : test assert, if failed log message && call big_error
-void _assertlog(const char *f1, const char *f2);
-#define assert(x) if (!(x)) _assertlog(__FILE__, __func__)
+void _assertlog(const char *f1);
+#define assert(x) if (!(x)) _assertlog(__func__)
 
 #endif	//UTILS_H

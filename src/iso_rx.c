@@ -49,27 +49,42 @@ void ISO_IRQH(void) {
 		}
 
 		lock=sys_SDI();
-		if (dup_state == DUP_WAIT) {
+		switch (dup_state) {
+		case DUP_CHEAT:
+			//skip duplex check, give byte to txworker
+			duplex_req = rxb;
+			dup_state = DUP_OK;
+			sys_RI(lock);
+			isotx_qwork();
+			return;
+			break;
+		case DUP_WAIT:
+			//verify duplex match
 			if (rxb == duplex_req) {
-				dup_state = DUP_IDLE;
+				dup_state = DUP_OK;
 			} else {
 				dup_state = DUP_ERR;
 			}
 			sys_RI(lock);
 			isotx_qwork();
 			return;
-		}
-		if (dup_state == DUP_CHEAT) {
-			duplex_req = rxb;
+			break;
+		case DUP_IDLE:
+			//normal RX byte; forward to rx worker
 			sys_RI(lock);
-			isotx_qwork();
+			iso_ts.last_RX = ts;
+			rxw(rxb, ts);
 			return;
-		}
-		sys_RI(lock);
+			break;
+		default:
+			//bad sequence; unexpected RX
+			sys_RI(lock);
+			DBGM("unexpected RX", rxb);
+			//XXX do nothing else ?
+			return;
+			break;
+		}	//switch dup_state
 
-		iso_ts.last_RX = ts;
-		rxw(rxb, ts);
-		return;
 	}	//if RXNE
 	return;
 }

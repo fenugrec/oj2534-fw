@@ -17,16 +17,15 @@ void dbg_log(const char * dm, int eno) {
 }
 
 //_assertlog: generate message, log with dbg_log, call big_error
-void _assertlog(const char *f1, const char *f2) {
+void _assertlog(const char *f1) {
 	#define ASSERTLEN 80
 	char assertm[ASSERTLEN+1];
 	size_t f1len;
 
 	f1len = strlen(f1);
-	if (f1len >= ASSERTLEN*0.75) f1len = 0.75*ASSERTLEN;	//use max 75% of buffer for f1
+	f1len = (f1len > ASSERTLEN)? ASSERTLEN : f1len;
 	strncpy(assertm, f1, f1len);
-	strncpy(assertm + f1len, f2, ASSERTLEN - f1len);
-	assertm[ASSERTLEN]=0;
+	assertm[f1len]=0;
 	dbg_log(assertm, 0);
 	big_error();
 	return;

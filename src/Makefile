@@ -6,7 +6,7 @@
 # + modifications for oj2534 (fenugrec)
 #
 ##############################################################################################
-# 
+#
 # On command line:
 #
 # make all = Create project
@@ -27,12 +27,13 @@ CC   = $(TRGT)gcc
 CP   = $(TRGT)objcopy
 AS   = $(TRGT)gcc -x assembler-with-cpp
 GDB = $(TRGT)gdb
-HEX  = $(CP) -O ihex 
+HEX  = $(CP) -O ihex
 BIN  = $(CP) -O binary -S
 
 MCFLAGS = -mcpu=cortex-m0 -mthumb -mlittle-endian
 DBGFLAGS = -gdwarf-2
 #gcc flags for ram build :
+#not sure of implications of "-fdata-sections" ...
 OPT = -Os
 ifeq ($(RAMBUILD), 1)
 	OPT += -ffunction-sections
@@ -49,31 +50,31 @@ LDFLAGS = $(MCFLAGS) -nostartfiles -T$(LDSCRIPT) -Wl,-Map=$(FULL_PRJ).map,--cref
 DDEFS = -DSTM32F072 -DUSE_STDPERIPH_DRIVER
 # List all default ASM defines here, like -D_DEBUG=1
 DADEFS =
-	
+
 # List all default directories to look for include files here
 DINCDIR =
-	
+
 # List the default directory to look for the libraries here
 DLIBDIR =
-	
+
 # List all default libraries here
 DLIBS =
-	
+
 #
 # End of default section
 ##############################################################################################
-	
+
 ##############################################################################################
 # Start of user section
 #
-	
-# 
+
+#
 # Define project name and Ram/Flash mode here
 PROJECT = oj2534-fw
-	
+
 # List all user C define here, like -D_DEBUG=1
 UDEFS =
-	
+
 # Define ASM defines here
 UADEFS =
 
@@ -89,7 +90,7 @@ STMSPSRCDDIR = $(STMSPDDIR)src/
 STMSPINCDDIR = $(STMSPDDIR)inc/
 
 #dir for linker scripts
-LKRDIR = 
+LKRDIR =
 
 #List C source files here
 SRC  = fifos.c
@@ -128,19 +129,19 @@ SRC += $(STMSPSRCDDIR)stm32f0xx_usart.c
 
 # List ASM source files here
 ASRC = startup_stm32f072.s
-	
+
 # List all user directories here
 UINCDIR = $(CMINCDIR) \
  $(DEVDIR)Include \
- $(STMSPINCDDIR) 
-#          .inc      
+ $(STMSPINCDDIR)
+#          .inc
 
 # List the user directory to look for the libraries here
 ULIBDIR =
-	
+
 # List all user libraries here
 ULIBS =
-	
+
 #
 # End of user defines
 ##############################################################################################
@@ -169,7 +170,7 @@ LIBS    = $(DLIBS) $(ULIBS)
 
 # Generate dependency information
 CPFLAGS += -MD -MP -MF .dep$(@F).d
-	
+
 #
 # makefile rules
 #

@@ -32,11 +32,11 @@ static struct {
 */
 
 /* dup_state:
-	-DUP_WAIT : next RX int checks duplex_req && set DUP_ERR or IDLE as required
+	-DUP_WAIT : next RX int checks duplex_req && set DUP_ERR or DUP_OK as required
 	-CHEAT :next RX int writes byte to duplex_req to be parsed by txworker (instead of RX message builder)
 			--> this is for slow init
 */
-extern enum dupstate_t { DUP_IDLE, DUP_WAIT, DUP_CHEAT, DUP_ERR} dup_state;
+extern enum dupstate_t { DUP_IDLE, DUP_WAIT, DUP_OK, DUP_CHEAT, DUP_ERR} dup_state;
 extern u8 duplex_req;	//next byte expected if DUP_WAIT
 
 

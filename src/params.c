@@ -12,7 +12,7 @@ struct tparams_t tparams = {
 	.w1=300,		//(ms) tmax pre syncpattern
 	.w2=20,		//(ms) tmax pre KB1
 	.w3=20,		//(ms) tmax KB1->KB2
-	.w4=50,		//(ms) tmax KB2->~KB2
+	.w4=50,		//(ms) tmax KB2->~KB2 (wait before txing ~kb2). questionable default; 9141 says W4=[25,50]
 	.w5=300,		//(ms) idle pre slowinit
 	.tidle=300,	//(ms) bus idle pre fastinit
 	.tinil=25,	//(ms) duration of TX_break of WUP
