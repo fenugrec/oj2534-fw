@@ -24,7 +24,10 @@ TODO : merge pmsg_release && pmsg_unq ?
 #include "msg.h"
 
 // PMSG ids = 0 to (PMSG_MAXNUM -1)
-#define PMSG_MAXNUM 10	//J2534-1 , 7.2.7
+#define PMSG_MAXNUM 10	//J2534-1 , 7.2.7 : "support at least 10 pmsgs"
+
+#define PMSG_MAX_SIZE	12	//J2534-1, 7.2. : "pmsg limited in length to a single msg <= 12B,
+							//including header / CAN ID"
 
 /* func protos */
 

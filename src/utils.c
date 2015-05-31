@@ -7,6 +7,7 @@
 //big_error : hangs the firmware, reset all periphs except USB, set error status
 void big_error(void) {
 	//TODO : TODO.
+	while (1) {}
 	return;
 }
 

@@ -14,7 +14,17 @@
 #include "iso.h"
 #include "timers.h"
 #include "pmsg.h"
-u32 SystemCoreClock;
+
+u32 SystemCoreClock;	//current clock freq (Hz)
+
+#ifdef TESTING
+#include "txwork.h"
+#include "fifos.h"
+void test_fifo(void);
+void test_pmsg(void);
+void test_isotx1(void);
+
+#endif // TESTING
 
 void SystemInit(void) {
 #ifdef TESTING
@@ -49,6 +59,105 @@ void SystemInit(void) {
 	return;
 }
 
+#ifdef TESTING
+int main(void) {
+	u32 tstart;
+
+	test_fifo();
+
+	timers_init();
+	fifo_init();
+	isotx_init();
+	pmsg_init();
+
+	tstart = frclock;
+	test_pmsg();
+
+	while ((frclock - tstart) < 1200) {
+		//let PMSG worker loop a few times
+		//verify countdown mechanism + TXQ flagging
+	}
+
+	while (1) {
+		static int t1done=0;
+		isotx_qwork();
+
+		//txwork test 1 : run once
+		if (!t1done) {
+			if ((frclock - tstart) > 1300) {
+				test_isotx1();
+				t1done = 1;;
+			}
+		}
+	}	//mainloop
+}
+
+void test_fifo(void) {
+	u8 src[]={0x55,0xAA,0x69};
+	u8 dest[5]={0};
+//	uint rlen;
+
+//	rlen = fifo_rlen(TXW, TXW_RP_ISO);
+	if (fifo_wblock(TXW, (u8 *) 0, (uint) -1) != 0)	//attempt to over-fill buf; should fail.
+		big_error();
+//	if (rlen != fifo_rlen(TXW, TXW_RP_ISO))		//free len should not change
+//		big_error();
+	if (fifo_wblock(TXW, src, 3) != 3)		//test valid wblock
+		big_error();
+//	if ((fifo_rlen(TXW, TXW_RP_ISO) - rlen) != 3)	//test free len decrease
+//		big_error();
+	if (fifo_wblockf(TXW, src, 3) != 3)		//test wblockf
+		big_error();
+//	if ((fifo_rlen(TXW, TXW_RP_ISO) - rlen) != 6)	//test free len decrease #2
+//		big_error();
+
+	if (fifo_skip(TXW, TXW_RP_ISO, (uint) -1) != 0)	//attempt to over-skip #1
+		big_error();
+//	if (fifo_skip(TXW, TXW_RP_ISO, rlen - 1) != 0)	//attempt to over-skip #2
+//		big_error();
+
+	if (fifo_rblock(TXW, TXW_RP_ISO, dest, 2) != 2)	//test rblock
+		big_error();
+	if (dest[1] != src[1])
+		big_error();
+	if (fifo_rblockf(TXW, TXW_RP_ISO, &dest[2], 1) != 1)	//test rblockf
+		big_error();
+	if (dest[2] != src[2])
+		big_error();
+
+	return;
+}
+
+//test periodic msg code; call from main loop ?
+void test_pmsg(void) {
+	u8 pmt[]={0x69,0x55};
+
+	#define TEST_PM_PER	500
+
+	if (pmsg_add(0, MP_ISO, TEST_PM_PER, ARRAY_SIZE(pmt), pmt) != 0) {
+		DBGM("pmsgadd err", 0);
+	}
+	return;
+}
+
+//iso txworker test 1: manual slow init (no ioctl)
+void test_isotx1(void) {
+	u8 tbraw[TXB_DATAPOS+2];
+	struct txblock *tb = (struct txblock *)tbraw;
+	tb->sH = 0;
+	tb->sL = 2;
+	tb->tH = 0;
+	tb->tL = 0;
+	tb->data[0]=0x96;
+	tb->data[1]=0x7E;
+	tb->hdr = (MP_ISO << TXB_PROTOSHIFT) | TXB_SPECIAL | TXB_SENDABLE;	//ensure ordering ?
+
+	fifo_wblock(TXW, tbraw, ARRAY_SIZE(tbraw));
+	return;
+}
+
+#else	//normal, non-TESTING
+
 int main(void) {
 
 	timers_init();
@@ -61,3 +170,4 @@ int main(void) {
 	}
 	return 0;
 }
+#endif // TESTING

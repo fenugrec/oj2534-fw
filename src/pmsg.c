@@ -1,6 +1,5 @@
 // pmsg.c
 /************ periodic msg shits ************/
-//TODO : pmsg_add() stuff
 //TODO : improve deletion for busy messages... maybe have caller copy data instead of claim/release?
 
 #include <stddef.h>
@@ -11,8 +10,6 @@
 #include "msg.h"
 #include "stypes.h"
 #include "utils.h"
-
-#define PMSG_MAX_SIZE	12	//must fit in PMSG_LENMASK
 
 //access to ->flags NEEDS to be atomic
 struct pmsg_desc {
@@ -26,6 +23,9 @@ struct pmsg_desc {
 		#define PMSG_PROTOMASK	0x3 << PMSG_PROTOSHIFT
 		#define PMSG_LENSHIFT	16	//msg len = (flags & LENMASK)>>LENSHIFT
 		#define PMSG_LENMASK	0xF << PMSG_LENSHIFT
+		#if ((PMSG_LENMASK >> PMSG_LENSHIFT) < PMSG_MAX_SIZE)
+			#error	bad PMSG MAXLEN !
+		#endif
 		#define PMSG_PERMASK	0xffff	//period (ms) = flags & PMSG_PERMASK
 	u8 data[PMSG_MAX_SIZE];
 };
@@ -117,6 +117,7 @@ int pmsg_add(uint id, enum msgproto mp, u16 per, uint len, u8 *data) {
 	pflags = PMSG_ENABLED | PMSG_NEW | (mp << PMSG_PROTOSHIFT) |
 			(len << PMSG_LENSHIFT) | per ;
 	pmsg_table[id].flags = pflags;
+	pmsg_setint(0);	//force reparse
 	return 0;
 }
 

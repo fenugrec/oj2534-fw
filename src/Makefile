@@ -97,6 +97,7 @@ SRC  = fifos.c
 SRC += iso_tx.c
 SRC += iso_rx.c
 SRC += pmsg.c
+SRC += txwork.c
 SRC += params.c
 SRC += utils.c
 SRC += timers.c

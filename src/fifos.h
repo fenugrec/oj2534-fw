@@ -28,6 +28,10 @@ uint fifo_wblockf(enum fifo_id fid, u8 *src, const uint len);
 //ret copied len if success, else 0
 uint fifo_rblock(enum fifo_id fid, enum fifo_rp rpid, u8 * dest, const uint len);
 
+//uint fifo_rblockf : copy len bytes, advance ptr if success. No IRQ disable ==> can't be called simultaneously on the same fifo/rp !
+//ret copied len if success, else 0
+uint fifo_rblockf(enum fifo_id fid, enum fifo_rp rpid, u8 * dest, const uint len);
+
 //_cblock : copy up to (len) bytes without adjusting rptr !
 //ret copied len if 100% success, 0 if incomplete.
 uint fifo_cblock(enum fifo_id fid, enum fifo_rp rpid, u8 * dest, const uint len);

@@ -113,10 +113,17 @@ static void pmsg_timer_init(void) {
 	return;
 }
 
-//setint : set PMSG_TMR to expire once, in 'next' ms
+//setint : set PMSG_TMR to expire once, in 'next' ms; set pending if next==0
 void pmsg_setint(u16 next) {
-	assert(next > 0);
-	PMSG_TMR->CNT = next;
-	TIM_Cmd(PMSG_TMR, ENABLE);
+
+	if (next == 0) {
+		//directly set pending
+		TIM_Cmd(PMSG_TMR, DISABLE);	//cancel current countdown
+		NVIC_SetPendingIRQ(IRQN_PMSG);
+		return;
+	} else {
+		PMSG_TMR->CNT = next;
+		TIM_Cmd(PMSG_TMR, ENABLE);
+	}
 	return;
 }
