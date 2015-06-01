@@ -14,15 +14,15 @@
 //access to ->flags NEEDS to be atomic
 struct pmsg_desc {
 	u32 flags;
-		#define PMSG_ENABLED	1<<31	//data valid & sendable. set by pmsg_add(id), cleared by pmsg_del(id)
-		#define PMSG_NEW	1<<30	//freshly added (set in pmsg_add; cleared in pmsg_work)
-		#define PMSG_TXQ	1<<26	//msg is queued for TX ( pmsg_unq() after tx)
-		#define PMSG_DELQ	1<<25	//msg is queued for deletion (pmsg_del(id))
-		#define	PMSG_BUSY	1<<24	//msg is in use (pmsg_claim(), pmsg_release())
+		#define PMSG_ENABLED	(1<<31)	//data valid & sendable. set by pmsg_add(id), cleared by pmsg_del(id)
+		#define PMSG_NEW	(1<<30)	//freshly added (set in pmsg_add; cleared in pmsg_work)
+		#define PMSG_TXQ	(1<<26)	//msg is queued for TX ( pmsg_unq() after tx)
+		#define PMSG_DELQ	(1<<25)	//msg is queued for deletion (pmsg_del(id))
+		#define	PMSG_BUSY	(1<<24)	//msg is in use (pmsg_claim(), pmsg_release())
 		#define PMSG_PROTOSHIFT	20	//enum msgproto = (flags & PROTOMASK) >> PROTOSHIFT
-		#define PMSG_PROTOMASK	0x3 << PMSG_PROTOSHIFT
+		#define PMSG_PROTOMASK	(0x3 << PMSG_PROTOSHIFT)
 		#define PMSG_LENSHIFT	16	//msg len = (flags & LENMASK)>>LENSHIFT
-		#define PMSG_LENMASK	0xF << PMSG_LENSHIFT
+		#define PMSG_LENMASK	(0xF << PMSG_LENSHIFT)
 		#if ((PMSG_LENMASK >> PMSG_LENSHIFT) < PMSG_MAX_SIZE)
 			#error	bad PMSG MAXLEN !
 		#endif

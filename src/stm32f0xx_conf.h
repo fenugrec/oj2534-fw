@@ -13,10 +13,10 @@
 	#define assert_param(x) (void) 0
 #elif (ASSERTPARAM_LEVEL == 1)
 	//fallback to regular assert
-	#define assert_param(x) if (!(x)) assert(x)
+	#define assert_param(x) assert(x)
 #else
 	//XXX refine this:
-	#define assert_param(x) big_error()
+	#define assert_param(x) if (!x) big_error()
 #endif
 
 #include <stm32f0xx_rcc.h>

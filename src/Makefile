@@ -31,7 +31,8 @@ HEX  = $(CP) -O ihex
 BIN  = $(CP) -O binary -S
 
 MCFLAGS = -mcpu=cortex-m0 -mthumb -mlittle-endian
-DBGFLAGS = -gdwarf-2
+#-g3 adds info about macros
+DBGFLAGS = -gdwarf-4 -g3
 #gcc flags for ram build :
 #not sure of implications of "-fdata-sections" ...
 OPT = -Os
@@ -111,7 +112,7 @@ SRC += main.c
 #SRC += $(STMSPSRCDDIR)stm32f0xx_crc.c
 #SRC += $(STMSPSRCDDIR)stm32f0xx_comp.c
 #SRC += $(STMSPSRCDDIR)stm32f0xx_dac.c
-#SRC += $(STMSPSRCDDIR)stm32f0xx_dbgmcu.c
+SRC += $(STMSPSRCDDIR)stm32f0xx_dbgmcu.c
 #SRC += $(STMSPSRCDDIR)stm32f0xx_dma.c
 #SRC += $(STMSPSRCDDIR)stm32f0xx_exti.c
 #SRC += $(STMSPSRCDDIR)stm32f0xx_flash.c

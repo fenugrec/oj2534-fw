@@ -1,4 +1,5 @@
 /*
+TODO : split testmode in a separate file
 */
 
 #include <stdint.h>
@@ -21,7 +22,8 @@ u32 SystemCoreClock;	//current clock freq (Hz)
 #include "txwork.h"
 #include "fifos.h"
 void test_fifo(void);
-void test_pmsg(void);
+void test_pmsg1(void);
+void test_pmsg2(void);
 void test_isotx1(void);
 
 #endif // TESTING
@@ -63,20 +65,21 @@ void SystemInit(void) {
 int main(void) {
 	u32 tstart;
 
-	test_fifo();
-
 	timers_init();
 	fifo_init();
 	isotx_init();
 	pmsg_init();
 
+	test_fifo();
+
 	tstart = frclock;
-	test_pmsg();
+	test_pmsg1();
 
 	while ((frclock - tstart) < 1200) {
 		//let PMSG worker loop a few times
 		//verify countdown mechanism + TXQ flagging
 	}
+	test_pmsg2();
 
 	while (1) {
 		static int t1done=0;
@@ -92,6 +95,7 @@ int main(void) {
 	}	//mainloop
 }
 
+//test_fifo : simple high-level API test; doesn't not test robustness VS interrupts
 void test_fifo(void) {
 	u8 src[]={0x55,0xAA,0x69};
 	u8 dest[5]={0};
@@ -124,12 +128,18 @@ void test_fifo(void) {
 		big_error();
 	if (dest[2] != src[2])
 		big_error();
+	if (fifo_cblock(TXW, TXW_RP_ISO, dest, 1) != 1)	//test cblock #1
+		big_error();
+	if (dest[0] != src[0])
+		big_error();
+	if (fifo_cblock(TXW, TXW_RP_ISO, dest, (uint) -1) != 0)	//test bad cblock
+		big_error();
 
 	return;
 }
 
 //test periodic msg code; call from main loop ?
-void test_pmsg(void) {
+void test_pmsg1(void) {
 	u8 pmt[]={0x69,0x55};
 
 	#define TEST_PM_PER	500
@@ -140,16 +150,44 @@ void test_pmsg(void) {
 	return;
 }
 
+void test_pmsg2(void) {
+	pmsg_del(0);
+	return;
+}
+
 //iso txworker test 1: manual slow init (no ioctl)
 void test_isotx1(void) {
-	u8 tbraw[TXB_DATAPOS+2];
+	#define IDSIZ1 2
+	u8 tbraw[TXB_DATAPOS+IDSIZ1];
 	struct txblock *tb = (struct txblock *)tbraw;
 	tb->sH = 0;
-	tb->sL = 2;
+	tb->sL = IDSIZ1;
 	tb->tH = 0;
 	tb->tL = 0;
-	tb->data[0]=0x96;
-	tb->data[1]=0x7E;
+	tb->data[0]=(u8) ISO_SLOWINIT;
+	tb->data[1]=0x33;
+	tb->hdr = (MP_ISO << TXB_PROTOSHIFT) | TXB_SPECIAL | TXB_SENDABLE;	//ensure ordering ?
+
+	fifo_wblock(TXW, tbraw, ARRAY_SIZE(tbraw));
+	return;
+}
+
+//iso txworker test 2: manual fast init (no ioctl)
+void test_isotx2(void) {
+	#define IDSIZ2 6
+	u8 tbraw[TXB_DATAPOS+IDSIZ2];
+	uint i=0;
+	struct txblock *tb = (struct txblock *)tbraw;
+	tb->sH = 0;
+	tb->sL = IDSIZ2;
+	tb->tH = 0;
+	tb->tL = 0;
+	tb->data[i++]=(u8) ISO_FASTINIT;
+	tb->data[i++]= 0x81;	//startcomm request
+	tb->data[i++]= 0x10;
+	tb->data[i++]= 0xFC;
+	tb->data[i++]= 0x81;
+	tb->data[i++]= 0x0E;
 	tb->hdr = (MP_ISO << TXB_PROTOSHIFT) | TXB_SPECIAL | TXB_SENDABLE;	//ensure ordering ?
 
 	fifo_wblock(TXW, tbraw, ARRAY_SIZE(tbraw));

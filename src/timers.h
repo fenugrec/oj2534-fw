@@ -6,6 +6,7 @@
 #include <stm32f0xx_tim.h>
 
 /******* Timer resource allocation *******/
+// Note : some timer features are hardcoded (see timers.c), like RCC* calls
 
 /** Master, free-running clock (u32, autowrap, no ints) **/
 /*

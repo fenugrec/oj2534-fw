@@ -3,6 +3,9 @@
 #include <stddef.h>
 
 #include "oj2534.h"
+#ifdef TESTING
+	#include <stm32f0xx_dbgmcu.h>
+#endif // TESTING
 
 #include <stm32f0xx.h>
 #include <stm32f0xx_tim.h>
@@ -16,10 +19,18 @@ static void txwork_timer_init(void);
 static void pmsg_timer_init(void);
 
 void timers_init(void) {
+#ifdef TESTING
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_DBGMCU, ENABLE);
+	DBGMCU_APB1PeriphConfig(DBGMCU_APB1_FZ_DBG_TIM2_STOP, ENABLE);	//frclock
+	DBGMCU_APB1PeriphConfig(DBGMCU_APB1_FZ_DBG_TIM3_STOP, ENABLE);	//txworker
+	DBGMCU_APB2PeriphConfig(DBGMCU_APB2_FZ_DBG_TIM16_STOP, ENABLE);	//pmsg
+
+#endif // TESTING
 	frclock_init();
 	//do these really need to be accessible outside timers.c ?
 	txwork_timer_init();
 	pmsg_timer_init();
+
 	return;
 }
 
