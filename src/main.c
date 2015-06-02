@@ -75,7 +75,7 @@ int main(void) {
 	tstart = frclock;
 	test_pmsg1();
 
-	while ((frclock - tstart) < 1200) {
+	while ((frclock - tstart) < (1200 * frclock_conv)) {
 		//let PMSG worker loop a few times
 		//verify countdown mechanism + TXQ flagging
 	}
@@ -87,7 +87,7 @@ int main(void) {
 
 		//txwork test 1 : run once
 		if (!t1done) {
-			if ((frclock - tstart) > 1300) {
+			if ((frclock - tstart) > (1300 * frclock_conv)) {
 				test_isotx1();
 				t1done = 1;;
 			}

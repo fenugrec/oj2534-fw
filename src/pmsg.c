@@ -52,7 +52,9 @@ void pmsg_init(void) {
 
 //PMSG_IRQH : semi-low prio INT on TMRx overflow/expiry.
 void PMSG_IRQH(void) {
+	TIM_Cmd(PMSG_TMR, DISABLE);	//cancel in case it was a forced int
 	TIM_ClearFlag(PMSG_TMR, TIM_FLAG_Update);
+	NVIC_ClearPendingIRQ(IRQN_PMSG);
 	pmsg_work();
 	return;
 }

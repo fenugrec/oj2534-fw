@@ -66,7 +66,7 @@ static void txwork_timer_init(void) {
 	TIM_TimeBaseInit(TXWORK_TMR, &tbi);
 	TXWORK_TMR->CNT = 0;
 	TIM_Cmd(TXWORK_TMR, ENABLE);
-	NVIC_EnableIRQ(IRQN_TXWORK);
+	NVIC_EnableIRQ(IRQN_TXWORK);	//always enabled; CCx ints are enabled individually with DIER
 	return;
 }
 
@@ -74,7 +74,6 @@ static void txwork_timer_init(void) {
 void TXWORK_TMR_IRQH(void) {
 	if (TXWORK_TMR->SR & ISO_TMR_CCIF) {
 		TIM_ITConfig(TXWORK_TMR, ISO_TMR_CC_IT, DISABLE);
-		TIM_ClearFlag(TXWORK_TMR, ISO_TMR_CCIF);
 #ifndef DISABLE_ISO
 		isotx_work();
 #endif
@@ -91,9 +90,9 @@ void txwork_setint(u16 ms, volatile u32 * CCR) {
 	u32 now;
 	assert((ms > 0) && (CCR != NULL));
 
-	now = TXWORK_TMR->CNT;
-
 	TIM_ClearFlag(TXWORK_TMR, ISO_TMR_CCIF);
+
+	now = TXWORK_TMR->CNT;
 	*CCR = now + ms;
 
 	TIM_ITConfig(TXWORK_TMR, ISO_TMR_CC_IT, ENABLE);
@@ -111,15 +110,16 @@ static void pmsg_timer_init(void) {
 	TIM_Cmd(PMSG_TMR, DISABLE);
 
 	tbi.TIM_ClockDivision = TIM_CKD_DIV1;
-	tbi.TIM_CounterMode = TIM_CounterMode_Down;
-	tbi.TIM_Period = -1;
+	tbi.TIM_CounterMode = TIM_CounterMode_Up;
 	tbi.TIM_Prescaler = (SystemCoreClock / 1000) -1;	//1ms incs
 	tbi.TIM_RepetitionCounter = 0;
 	TIM_TimeBaseInit(PMSG_TMR, &tbi);
 
 	PMSG_TMR->CR1 |= TIM_CR1_OPM;	//one-pulse mode ! every Update disables the timer.
-	TIM_ITConfig(PMSG_TMR, TIM_IT_Update, ENABLE);
+	PMSG_TMR->CNT = 0;
+
 	TIM_ClearFlag(PMSG_TMR, TIM_FLAG_Update);
+	TIM_ITConfig(PMSG_TMR, TIM_IT_Update, ENABLE);
 	NVIC_EnableIRQ(IRQN_PMSG);
 	return;
 }
@@ -133,8 +133,14 @@ void pmsg_setint(u16 next) {
 		NVIC_SetPendingIRQ(IRQN_PMSG);
 		return;
 	} else {
-		PMSG_TMR->CNT = next;
+		PMSG_TMR->ARR = next;
 		TIM_Cmd(PMSG_TMR, ENABLE);
 	}
 	return;
+}
+
+//better HF handler : stop frclock; TODO : other stuff ? (put in safe state)
+void HardFault_Handler(void) {
+	TIM_Cmd(FRCLOCK_TMR, DISABLE);
+	while (1) {}
 }

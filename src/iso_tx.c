@@ -156,6 +156,7 @@ void isotx_work(void) {
 //isotx_qwork() : queue TX worker interrupt. XXX TODO : merge with setinit(0) ?
 void isotx_qwork(void) {
 	TXWORK_TMR->EGR = ISO_TMR_CCG;	//force CC1IF flag
+	TIM_ITConfig(TXWORK_TMR, ISO_TMR_CC_IT, ENABLE);
 	return;
 }
 /*********** ISO TX STUFF *********/

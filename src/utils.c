@@ -2,10 +2,14 @@
 
 #include <stm32f0xx.h>
 #include "stypes.h"
+#include "timers.h"
+
 #include <string.h>	//yuck - just for strncpy
 
 //big_error : hangs the firmware, reset all periphs except USB, set error status
 void big_error(void) {
+	static u32 killtime;
+	killtime = frclock;
 	//TODO : TODO.
 	while (1) {}
 	return;

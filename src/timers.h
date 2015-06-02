@@ -23,7 +23,7 @@ Timestamps : either SOF (CAN), or "end of last bit of msg" (ISO)
 #define frclock	FRCLOCK_TMR->CNT
 
 /** Periodic MSG timer **/
-// basic 16 bit * 1ms downcount timer, interrupt on expiry.
+// basic 16 bit * 1ms timer, interrupt on expiry.
 #define PMSG_TMR	TIM16
 #define PMSG_IRQH	TIM16_IRQHandler
 #define PMSG_APBC	RCC_APB2Periph_TIM16
