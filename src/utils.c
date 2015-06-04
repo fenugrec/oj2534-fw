@@ -4,20 +4,24 @@
 #include "stypes.h"
 #include "timers.h"
 
-#include <string.h>	//yuck - just for strncpy
+#include <string.h>	//yuck - just for strlen
 
 //big_error : hangs the firmware, reset all periphs except USB, set error status
+volatile u32 killtime;
 void big_error(void) {
-	static u32 killtime;
+
 	killtime = frclock;
 	//TODO : TODO.
 	while (1) {}
 	return;
 }
 
-//dbg_log() : TODO, copy message to static error buf, readable by USB or debugger
+char last_err[20];
+int last_eno;
+//dbg_log() : copy message to static error buf, readable by USB (TODO) or debugger
 void dbg_log(const char * dm, int eno) {
-	//TODO: TODO
+	memcpy(last_err, dm, strlen(dm));
+	last_eno = eno;
 	return;
 }
 
@@ -29,7 +33,7 @@ void _assertlog(const char *f1) {
 
 	f1len = strlen(f1);
 	f1len = (f1len > ASSERTLEN)? ASSERTLEN : f1len;
-	strncpy(assertm, f1, f1len);
+	memcpy(assertm, f1, f1len);
 	assertm[f1len]=0;
 	dbg_log(assertm, 0);
 	big_error();

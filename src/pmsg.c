@@ -1,6 +1,5 @@
 // pmsg.c
 /************ periodic msg shits ************/
-//TODO : improve deletion for busy messages... maybe have caller copy data instead of claim/release?
 
 #include <stddef.h>
 #include <string.h>
@@ -18,7 +17,6 @@ struct pmsg_desc {
 		#define PMSG_NEW	(1<<30)	//freshly added (set in pmsg_add; cleared in pmsg_work)
 		#define PMSG_TXQ	(1<<26)	//msg is queued for TX ( pmsg_unq() after tx)
 		#define PMSG_DELQ	(1<<25)	//msg is queued for deletion (pmsg_del(id))
-		#define	PMSG_BUSY	(1<<24)	//msg is in use (pmsg_claim(), pmsg_release())
 		#define PMSG_PROTOSHIFT	20	//enum msgproto = (flags & PROTOMASK) >> PROTOSHIFT
 		#define PMSG_PROTOMASK	(0x3 << PMSG_PROTOSHIFT)
 		#define PMSG_LENSHIFT	16	//msg len = (flags & LENMASK)>>LENSHIFT
@@ -75,8 +73,7 @@ void pmsg_work(void) {
 	lock=sys_SDI();	//yuck, but no choice
 	for (uint i=0; i< ARRAY_SIZE(pmsg_table); i++) {
 		pflags = pmsg_table[i].flags;
-		if (((pflags & PMSG_ENABLED) == 0) ||
-			(pflags & PMSG_BUSY)) continue;
+		if ((pflags & PMSG_ENABLED) == 0) continue;
 		if (pflags & PMSG_NEW) {
 			//this makes sure new msgs will be queued as soon as added
 			pmsg_countdown[i]=0;
@@ -124,86 +121,44 @@ int pmsg_add(uint id, enum msgproto mp, u16 per, uint len, u8 *data) {
 	return 0;
 }
 
-//delete or queue for deletion a pmsg; return -1 if queued, 0 if ok
+//delete pmsg <id>. always succeed
 //for use by USB command dispatch
-int pmsg_del(uint id) {
-	u32 lock;
-	u32 pflags;
-	int rv;
-	if (id >= ARRAY_SIZE(pmsg_table)) return 0;
-	lock=sys_SDI();
-	pflags = pmsg_table[id].flags;
-	if ((pflags & PMSG_ENABLED) ==0) {
-		//already disabled == deleted
-		rv = 0;
-	} else if (pflags & PMSG_BUSY) {
-		//queue deletion and signal business
-		pmsg_table[id].flags = pflags | PMSG_DELQ;
-		rv = -1;
-	} else {
-		//enabled and not busy : delete !
-		pmsg_table[id].flags = 0;
-		rv = 0;
-	}
-	sys_RI(lock);
-	return rv;
-}
-
-
-//clear BUSY flag, delete message if queued for del; always succeed
-void pmsg_release(uint id) {
-	u32 lock;
-	u32 pflags;
+void pmsg_del(uint id) {
 	assert(id < ARRAY_SIZE(pmsg_table));
-	lock=sys_SDI();
-	pflags = pmsg_table[id].flags;
-	if (pflags & PMSG_DELQ) {
-		pflags = 0;
-		//XXX signal delete completion ?
-	}
-	pflags &= ~PMSG_BUSY;
-	pmsg_table[id].flags = pflags;
-	sys_RI(lock);
+
+	pmsg_table[id].flags = 0;	//clear PMSG_ENABLED == delete  !
 	return;
 }
 
-//clear TXQ flag: always succeed
-void pmsg_unq(uint id) {
-	u32 lock;
-	assert(id < ARRAY_SIZE(pmsg_table));
-	lock=sys_SDI();
-	pmsg_table[id].flags &= ~PMSG_TXQ;
-	sys_RI(lock);
-	return;
-}
 
-//find,claim, get info for a pmsg with proto <mprot> and is queued for TX
-// rets ptr to data and sets len, pmid if success. ret NULL if no msg claimed.
-//TODO : remove claim / release mechanism; copy data to worker's buffer instead ?
-u8 * pmsg_claim(enum msgproto mprot, uint *len, uint *pmid) {
+//pmsg_get: find next queued pmsg with matching proto;
+//ret 0 and fill *buf, *pmlen, *pmid if ok.
+int pmsg_get(enum msgproto mp, u8 *buf, uint * pmlen, uint *pmid) {
+
 	u32 lock;
 	uint id;
 	u32 pflags;
-	u8 * rv;
 
-	assert((len != NULL) && (pmid != NULL));
+	assert((buf != NULL) && (pmlen != NULL) && (pmid != NULL));
 
 	lock=sys_SDI();
+
 	for (id=0; id < ARRAY_SIZE(pmsg_table); id++) {
 		pflags = pmsg_table[id].flags;
 		if (((pflags & PMSG_ENABLED) ==0) ||
-			((pflags & PMSG_TXQ) == 0) || (pflags & PMSG_BUSY)) {
+			((pflags & PMSG_TXQ) == 0)) {
 			continue;
 		}
-		if ( ((pflags & PMSG_PROTOMASK) >> PMSG_PROTOSHIFT) == mprot) {
-			pmsg_table[id].flags = pflags | PMSG_BUSY;
-			sys_RI(lock);
-			rv = pmsg_table[id].data;
-			*len = (pflags & PMSG_LENMASK) >> PMSG_LENSHIFT;
+		if ( ((pflags & PMSG_PROTOMASK) >> PMSG_PROTOSHIFT) == mp) {
+			*pmlen = (pflags & PMSG_LENMASK) >> PMSG_LENSHIFT;
 			*pmid = id;
-			return rv;
+			memcpy(buf, pmsg_table[id].data, *pmlen);
+			pmsg_table[id].flags &= ~PMSG_TXQ;	//auto-unqu !
+			sys_RI(lock);
+			return 0;
 		}
 	}	//for (pmsg)
 	sys_RI(lock);
-	return NULL;
+
+	return -1;	//no pmsg found
 }

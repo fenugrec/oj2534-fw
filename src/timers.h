@@ -55,6 +55,9 @@ Timestamps : either SOF (CAN), or "end of last bit of msg" (ISO)
 //partial, low-level init of timers.
 void timers_init(void);
 
+//fr_div : convert frclock-based time to millisecs
+u16 fr_div(u32 dts);
+
 /* tx worker funcs */
 //isowork_setint() : interrupt in <ms> ms
 void isowork_setint(u16 ms, volatile u32 * CCR);

@@ -2,6 +2,7 @@
 //TXworker & stuff for iso9141 / 14230
 
 /* TODO:
+	-reduce # of frclock_conv divs ! (no hw div on M0 ! fuck !)
 	-finish UART code
 	-double check isot_ts.last_act usage
 	-add init ioctl callbacks/etc
@@ -35,7 +36,7 @@ static void _isotx_startinit(u16 len, u8 type);
 static void _isotx_slowi(void);
 static void _isotx_fasti(void);
 static int _isotx_findpmsg(void);
-static void _isotx_start(uint len, u16 timeout, u8 * optdata);
+static void _isotx_start(uint len, u16 timeout);
 static void _isotx_continue(void);
 static void _isotx_done(void);
 static void iso_rxw(int reason);
@@ -75,7 +76,7 @@ static struct  {
 	//following members are valid only if iso_state == TX
 	enum txm {TXM_FIFO, TXM_PMSG} tx_mode;	//determines how to fetch data
 	uint pm_id;	//if _mode==PMSG : current msgid (set in _findpmsg)
-	u8 *pm_data;	//if _mode==PMSG : temp ptr to pmsg data
+	u8 pm_data[PMSG_MAX_SIZE];	//if _mode==PMSG : copy of pmsg data
 	uint curpos;	//# of bytes sent so far
 	uint curlen;	//# of bytes in current msg
 }	its = {
@@ -193,8 +194,8 @@ void iso_work(void) {
 				_isotx_startinit(bsize, t_init);	//takes care of everything
 				return;
 			}
-
-			_isotx_start(bsize, tout, NULL);
+			its.tx_mode = TXM_FIFO;
+			_isotx_start(bsize, tout);
 			return;
 		} else {
 			//bad proto ==> skip block.
@@ -300,28 +301,24 @@ void ISO_IRQH(void) {
 
 
 /*********** ISO TX STUFF *********/
-//ptet fitter dans un autre fihier ?
 
-//_isotx_findpmsg : cycle through pmsg IDs, try to claim an enabled ISO pmsg.
-//TODO : generaliz pour CAN ?
+//_isotx_findpmsg : start PMSG if possible
 //calls _isotx_start() && ret 0 if ok
 //ret -1 if failed
 static int _isotx_findpmsg(void) {
-	u8 * pm_data;
 	uint pm_len;
 
-	pm_data = pmsg_claim(MP_ISO, &pm_len, &its.pm_id);
-	if ( pm_data != NULL) {
+	if ( !pmsg_get(MP_ISO, its.pm_data, &pm_len, &its.pm_id)) {
 		its.tx_mode = TXM_PMSG;
-		_isotx_start(pm_len, pm_len * DEFTIMEOUT, pm_data);
+		_isotx_start(pm_len, pm_len * DEFTIMEOUT);
 		return 0;
 	}
 	return -1;	//no pmsg claimed & started
 }
 
-//init stuff for txing a new msg; set iso_state; ensure P3_min ; set next txw int
-//optdata is optional; NULL for regular fifo messages, or points to PMSG data
-static void _isotx_start(uint len, u16 timeout, u8 * optdata) {
+//init stuff for txing a new msg; set iso_state; ensure P3_min ; set next txw int.
+//its.tx_mode needs to be set before calling this
+static void _isotx_start(uint len, u16 timeout) {
 	u32 guardtime;
 
 	if (len == 0) {
@@ -329,12 +326,6 @@ static void _isotx_start(uint len, u16 timeout, u8 * optdata) {
 		return;
 	}
 
-	if (optdata != NULL) {
-		its.tx_mode = TXM_PMSG;
-		its.pm_data = optdata;
-	} else {
-		its.tx_mode = TXM_FIFO;
-	}
 	its.iso_state = ISO_TX;
 	its.curpos = 0;
 	its.curlen = len;
@@ -466,19 +457,15 @@ static void _isotx_continue(void) {
 
 
 //_isotx_done : should be called after msg tx (matches _isotx_start).
-// release PMSG if applicable, reset iso_state; set next txw int
+// reset iso_state; set next txw int
 // TODO : merge with _abort ?
 static void _isotx_done(void) {
-	if (its.tx_mode == TXM_PMSG) {
-		pmsg_unq(its.pm_id);
-		pmsg_release(its.pm_id);
-	}
 	its.iso_state = ISO_IDLE;
 	dup_state = DUP_IDLE;
 	iso_ts.last_TX = frclock;
 	iso_ts.last_act = iso_ts.last_TX;
 	its.curlen = 0;
-	//XXX set next int?
+	isowork_setint(tparams.p3min, &ISO_TMR_CCR);
 	return;
 }
 
@@ -847,7 +834,7 @@ static void _isotx_fasti(void) {
 		//XXX purge RX bufs
 		USART_Cmd(ISO_UART, ENABLE);
 		iso_initstate = INIT_IDLE;
-		_isotx_start(iso_initlen, iso_initlen * DEFTIMEOUT, NULL);
+		_isotx_start(iso_initlen, iso_initlen * DEFTIMEOUT);
 		break;
 	default:
 		DBGM("bad FI state", iso_initstate);

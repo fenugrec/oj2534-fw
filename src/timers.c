@@ -18,6 +18,15 @@ static void frclock_init(void);
 static void txwork_timer_init(void);
 static void pmsg_timer_init(void);
 
+//fr_div : convert frclock-based time to millisecs
+u16 fr_div(u32 dts) {
+	if (dts >= ((1<<16) * frclock_conv)) {
+		//clip large vals
+		return -1;
+	}
+	return dts / frclock_conv;
+}
+
 void timers_init(void) {
 #ifdef TESTING
 	RCC_APB2PeriphClockCmd(RCC_APB2Periph_DBGMCU, ENABLE);
