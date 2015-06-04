@@ -56,8 +56,8 @@ Timestamps : either SOF (CAN), or "end of last bit of msg" (ISO)
 void timers_init(void);
 
 /* tx worker funcs */
-//txwork_setint() : interrupt in <ms> ms
-void txwork_setint(u16 ms, volatile u32 * CCR);
+//isowork_setint() : interrupt in <ms> ms
+void isowork_setint(u16 ms, volatile u32 * CCR);
 
 /* pmsg funcs */
 //pmsg_setint() : interrupt once, in <next> ms

@@ -6,7 +6,18 @@
 
 #include "stypes.h"
 
+/* uses TXW fifo (see fifos.c)
+	- Filled with PTWM requests; every worker has its read ptr;
+	- only 1 writer (USB)
+	- workers skip blocks they don't handle. ex. of contents:
+	0 ...  9 ...12 ..21 ....
+	[ CAN ][ISO][CAN][ISO]----"
+	ISO worker will parse the block @ 9, then skip the CAN block @ 12, etc..
+*/
+
+
 //implem of txblocks within fifo; use u8 because of unaligned reads
+//TODO : add support for split blocks ? (i.e. if bsize > fifo_size)
 struct txblock {
 	u8	hdr;
 		#define TXB_SENDABLE	(1<<7)	//block is complete & ready to send (write last!)

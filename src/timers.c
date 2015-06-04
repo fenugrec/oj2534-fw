@@ -75,7 +75,7 @@ void TXWORK_TMR_IRQH(void) {
 	if (TXWORK_TMR->SR & ISO_TMR_CCIF) {
 		TIM_ITConfig(TXWORK_TMR, ISO_TMR_CC_IT, DISABLE);
 #ifndef DISABLE_ISO
-		isotx_work();
+		iso_work();
 #endif
 	} else {
 		DBGM("bad TXW int", TXWORK_TMR->SR);
@@ -86,7 +86,7 @@ void TXWORK_TMR_IRQH(void) {
 
 // set specified CCRx to match in (ms) millisecs.
 // Caution: TIM_ITconfig does an unlocked R-M-W on DIER, so this should only be called from the TMR ISR !
-void txwork_setint(u16 ms, volatile u32 * CCR) {
+void isowork_setint(u16 ms, volatile u32 * CCR) {
 	u32 now;
 	assert((ms > 0) && (CCR != NULL));
 

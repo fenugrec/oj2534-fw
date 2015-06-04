@@ -77,13 +77,13 @@ int main(void) {
 
 	while ((frclock - tstart) < (1200 * frclock_conv)) {
 		//let PMSG worker loop a few times
-		//verify countdown mechanism + TXQ flagging
+		iso_qwork();
 	}
 	test_pmsg2();
 
 	while (1) {
 		static int t1done=0;
-		isotx_qwork();
+		iso_qwork();
 
 		//txwork test 1 : run once
 		if (!t1done) {
@@ -204,7 +204,7 @@ int main(void) {
 	pmsg_init();
 
 	while (1) {
-		isotx_qwork();	//also call qwork on txb reception etc
+		iso_qwork();	//also call qwork on txb reception etc
 	}
 	return 0;
 }

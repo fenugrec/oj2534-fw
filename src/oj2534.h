@@ -10,6 +10,6 @@
 #define TESTING	//HSI clock, no USB
 
 /* defines to facilitate RAMbuilds */
-//#define DISABLE_ISO	//prevents calls to isotx_work
+//#define DISABLE_ISO	//prevents calls to iso_work
 
 #endif // OJ2534_H

@@ -9,10 +9,10 @@ void isotx_abort(void);
 //isotx_init: enable UART w/ params, reset txw state
 void isotx_init(void);
 
-//isotx_qwork: queue txworker interrupt
-void isotx_qwork(void);
+//iso_qwork: queue txworker interrupt
+void iso_qwork(void);
 
-//isotx_work: tx worker. Call only from int handler !
-void isotx_work(void);
+//iso_work: tx worker. Call only from int handler !
+void iso_work(void);
 
 #endif	//ISO_H

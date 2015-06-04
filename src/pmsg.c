@@ -75,7 +75,8 @@ void pmsg_work(void) {
 	lock=sys_SDI();	//yuck, but no choice
 	for (uint i=0; i< ARRAY_SIZE(pmsg_table); i++) {
 		pflags = pmsg_table[i].flags;
-		if ((pflags & PMSG_ENABLED) == 0) continue;
+		if (((pflags & PMSG_ENABLED) == 0) ||
+			(pflags & PMSG_BUSY)) continue;
 		if (pflags & PMSG_NEW) {
 			//this makes sure new msgs will be queued as soon as added
 			pmsg_countdown[i]=0;
@@ -161,6 +162,7 @@ void pmsg_release(uint id) {
 		//XXX signal delete completion ?
 	}
 	pflags &= ~PMSG_BUSY;
+	pmsg_table[id].flags = pflags;
 	sys_RI(lock);
 	return;
 }

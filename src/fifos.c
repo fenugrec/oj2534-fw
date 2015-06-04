@@ -4,17 +4,24 @@
 //TODO : atomic types for rp, wp members
 //ensure no simult calls to fifo_wblock* on the same fifo
 
-// prochain read se fait *rp, prochain write *wp;
-// si rp==wp : pas de data a reader
-// si wp+1 == rp : plus de place a writer
-// 
+// next read is @  *rp, next write *wp;
+// if rp==wp : no data ready to read
+// if wp+1 == rp : full, can't write
+//
 
 #include <stddef.h>
 #include "fifos.h"
 #include "stypes.h"
 #include "utils.h"
 
-//organiz les fifos TXW et RXW:
+/* TXW fifo; see txwork.h */
+/* RXW fifo
+	0- J2534 says msg len <= 4128 !
+	1- dynamic mem alloc is bad
+	2- not enough RAM to give a 4k buffer to every RX builder
+	Solution : rx code builds rxb "chunks"; see rxwork.h
+*/
+
 
 struct fifo {
 	uint nrp;	//number of used read ptrs in rp[]
@@ -25,7 +32,7 @@ struct fifo {
 };
 
 #define TXW_SIZE	400	//TODO : tx message splitting
-#define RXW_SIZE	4200
+#define RXW_SIZE	4200	//was 4200 :
 static struct fifo worker_fifos[FIFO_NUM];
 static u8 txwf_data[TXW_SIZE];
 static u8 rxwf_data[RXW_SIZE];
@@ -61,7 +68,7 @@ uint fifo_wblock(enum fifo_id fid, u8 *src, const uint len) {
 
 	if (fid >= ARRAY_SIZE(worker_fifos) ||
 		src == NULL) return 0;
-	
+
 	siz = worker_fifos[fid].siz;
 	data = worker_fifos[fid].data;
 	wpp = &worker_fifos[fid].wp;
@@ -114,7 +121,7 @@ uint fifo_wblockf(enum fifo_id fid, u8 *src, const uint len) {
 
 	if (fid >= ARRAY_SIZE(worker_fifos) ||
 		src == NULL) return 0;
-	
+
 	siz = worker_fifos[fid].siz;
 	data = worker_fifos[fid].data;
 	wpp = &worker_fifos[fid].wp;
@@ -151,7 +158,7 @@ uint fifo_rblock(enum fifo_id fid, enum fifo_rp rpid, u8 * dest, const uint len)
 	if (fid >= ARRAY_SIZE(worker_fifos) ||
 		rpid >= worker_fifos[fid].nrp ||
 		dest == NULL) return 0;
-	
+
 	siz = worker_fifos[fid].siz;
 	data = worker_fifos[fid].data;
 	rpp = &worker_fifos[fid].rp[rpid];
@@ -159,7 +166,7 @@ uint fifo_rblock(enum fifo_id fid, enum fifo_rp rpid, u8 * dest, const uint len)
 	lock=sys_SDI();
 	wp = worker_fifos[fid].wp;
 	rp= *rpp;	//get current index
-	
+
 	for (done=0; done < len; done++) {
 		if (rp == wp) {
 			sys_RI(lock);
@@ -192,7 +199,7 @@ uint fifo_rblockf(enum fifo_id fid, enum fifo_rp rpid, u8 * dest, const uint len
 	rpp = &worker_fifos[fid].rp[rpid];
 	wpp = &worker_fifos[fid].wp;
 	rp= *rpp;	//get current index
-	
+
 	for (done=0; done < len; done++) {
 		if (rp == *wpp) {
 			return 0;
@@ -214,11 +221,11 @@ uint fifo_cblock(enum fifo_id fid, enum fifo_rp rpid, u8 * dest, const uint len)
 	uint done, siz;
 	uint rp, wp;
 	u8 *data;
-	
+
 	if (fid >= ARRAY_SIZE(worker_fifos) ||
 		rpid >= worker_fifos[fid].nrp ||
 		dest == NULL) return 0;
-	
+
 	siz = worker_fifos[fid].siz;
 	data = worker_fifos[fid].data;
 	wp = worker_fifos[fid].wp;
@@ -247,10 +254,10 @@ uint fifo_rlen(enum fifo_id fid, enum fifo_rp rpid) {
 	uint siz;
 
 	siz = worker_fifos[fid].siz;
-	
+
 	rp = worker_fifos[fid].rp[rpid];
 	wp = worker_fifos[fid].wp;
-	
+
 	return (rp > wp)? (siz - rp + wp):(wp - rp);
 }
 

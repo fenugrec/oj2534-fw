@@ -96,7 +96,6 @@ LKRDIR =
 #List C source files here
 SRC  = fifos.c
 SRC += iso_tx.c
-SRC += iso_rx.c
 SRC += pmsg.c
 SRC += txwork.c
 SRC += params.c
