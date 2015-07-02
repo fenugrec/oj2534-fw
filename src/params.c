@@ -2,9 +2,15 @@
 #include "stypes.h"
 #include "params.h"
 
-//struct tparams : timings (j2534 fig. 30, p.43+); lock while updating ; move to a "params" module ?
-//note : P* ont un scaling dans les configs. XXX IOCTL SET_CONFIG doit scaler !
-struct tparams_t tparams = {
+//struct isoparams : timings (j2534 fig. 30, p.43+); lock while updating ; move to a "params" module ?
+//note : P* need to be scaled, see SET_CONFIG ioctl
+struct isoparams_t isoparams = {
+	.k_only = 1,
+	.DATA_RATE = 10400,
+	.LOOPBACK = 0,
+	.PARITY = 0,	//N
+	.b8 = 1,		//8
+	.FIVE_BAUD_MOD = 0,	//?
 	.p1max=40/2,	//(ms) max interbyte for ECU resps
 	.p3min=110/2,	//(ms) min time between end of ECU resp(s) and new tester req
 	.p4min=10/2,	//(ms) min interbyte for tester reqs

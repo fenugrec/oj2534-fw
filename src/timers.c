@@ -1,4 +1,5 @@
 /* Common code for timer resources */
+//TODO : check if clearing a CCIF also clears its NVIC_ISPR bit (scenario : qwork while tmr expires soon)
 
 #include <stddef.h>
 

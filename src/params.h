@@ -1,11 +1,22 @@
 #ifndef PARAMS_H
 #define PARAMS_H
 
+#include <stdint.h>
+#include "stypes.h"
+
 /* timings : j2534-1 p.43+
- * TODO : ajouter funcs pour modif
+ * TODO : access funcs;
+ Technically these should be part of chanconf_t, but they're only applicable to ISO
+ and we only have 1 ISO channel.
  */
 
-struct tparams_t {
+//struct isoparams : parameters for ISO chan
+struct isoparams_t {
+	_Bool	k_only;	//K or K+L for init; (set in Connect)
+
+	u32	DATA_RATE;	//bps
+	_Bool LOOPBACK;
+
 	u16	p1max;	//(ms) max interbyte for ECU resps
 	u16	p3min;	//(ms) min time between end of ECU resp(s) and new tester req
 	u16	p4min;	//(ms) min interbyte for tester reqs
@@ -18,9 +29,43 @@ struct tparams_t {
 	u16	tidle;	//(ms) bus idle pre fastinit
 	u16	tinil;	//(ms) duration of TX_break of WUP
 	u16	twup;	//(ms) total duration of WUP
+
+	u8	PARITY;	//0 : none, 1: O, 2: E
+	_Bool	b8;	//8 databit, else 7
+	u8		FIVE_BAUD_MOD;
+
+};
+extern struct isoparams_t isoparams;
+
+//params for CAN / iso15765 channel
+struct canparams_t {
+	u32	DATA_RATE;	//bps
+	_Bool LOOPBACK;
+	u8	BIT_SPL_POINT;
+	u8	SYNC_JMP_W;
+	u8	ISO15765_BS;
+	u8	ISO15765_STMIN;
+	u16	BS_TX;
+	u16	STMIN_TX;
+	u8	ISO15765_WFT_MAX;
 };
 
-//struct tparams : timing parameters
-extern struct tparams_t tparams;
+/* params for J1850 channel, not impl
+struct j1850params_t {
+	u32	DATA_RATE;	//bps
+	_Bool LOOPBACK;
+	u8	NODE_ADDR;
+	u8	NET_LINE;
+
+};
+*/
+
+/* params for SCI chan, not impl
+struct sciparams_t {
+	u32	DATA_RATE;	//bps
+	_Bool LOOPBACK;
+	//T1 ... T5
+};
+*/
 
 #endif

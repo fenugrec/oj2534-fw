@@ -22,9 +22,9 @@ struct txblock {
 	u8	hdr;
 		#define TXB_SENDABLE	(1<<7)	//block is complete & ready to send (write last!)
 		#define TXB_PROTOSHIFT	5
-		#define TXB_PROTOMASK	0x3	//enum msgproto = hdr&PROTOMASK >> PROTOSHIFT
+		#define TXB_PROTOMASK	(0x3 << TXB_PROTOSHIFT)	//enum msgproto = hdr&PROTOMASK >> PROTOSHIFT
 		#define TXB_SPECIAL	(1<<4)	//flag special blocks (fast/slow init)
-		#define TXB_IDMASK 0x7	//2..0 : msgid (pour fb avec dll)
+		#define TXB_IDMASK 0x7	//2..0 : msgid (TODO : for returning indications/status)
 	u8	sH;
 	u8	sL;	//u16 sizeof (*data) == (sH<<8) | sL
 	u8	tH;
