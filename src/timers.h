@@ -5,6 +5,11 @@
 #include <stm32f0xx.h>
 #include <stm32f0xx_tim.h>
 
+/** clock configs; temp location **/
+//these should be moved and defined intelligently
+#define AHBfreq		12*1000*1000
+#define APB1freq	12*1000*1000
+
 /******* Timer resource allocation *******/
 // Note : some timer features are hardcoded (see timers.c), like RCC* calls
 

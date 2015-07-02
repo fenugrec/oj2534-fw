@@ -4,7 +4,6 @@
 /* TODO:
 	-CLEAR_*X_BUFFER ioctls
 	-reduce # of frclock_conv divs ! (no hw div on M0 ! fuck !)
-	-finish UART code
 	-double check isot_ts.last_act usage
 	-add init ioctl callbacks/etc
 */
@@ -14,6 +13,8 @@
 #include <stm32f0xx.h>
 #include <stm32f0xx_usart.h>
 #include <stm32f0xx_gpio.h>
+
+#include "j2534.h"
 
 #include "stypes.h"
 #include "msg.h"
@@ -512,9 +513,34 @@ static void iso_gpioinit(void) {
 
 //set UART params + enable; assumes clock is already enabled
 static void iso_uartinit(void) {
-	//XXX set USART params,
-	//Baud rates : divisor = 16bits, TX invert !!, etc
+	u32 cr1;
+	u16 brdiv;
 
+	USART_Cmd(ISO_UART, DISABLE);
+
+	cr1 = USART_CR1_PEIE | USART_CR1_RXNEIE | USART_CR1_TE | USART_CR1_RE;
+	switch (isoparams.PARITY) {
+	case EVEN_PARITY:
+		cr1 |= USART_CR1_PCE;
+	case ODD_PARITY:
+		cr1 |= USART_CR1_PCE | USART_CR1_PS;
+	case NO_PARITY:
+	default:
+		break;
+	}
+	cr1 |= (isoparams.b8 ? USART_WordLength_8b : USART_WordLength_7b);
+	//set USART params: oversampl=16, parity, word length.
+	ISO_UART->CR1 = cr1;
+
+	ISO_UART->CR2 = USART_CR2_TXINV;	//TX invert
+	ISO_UART->CR3 = 0;	//nothing special
+
+	brdiv = ISO_UFRQ / isoparams.DATA_RATE;
+	if (brdiv < 16)	brdiv = 16;		//illegal !
+	ISO_UART->BRR = brdiv;
+
+	USART_Cmd(ISO_UART, ENABLE);
+	return;
 }
 //isotx_init : TODO
 //call only on reset or after isotx_abort.
@@ -874,6 +900,8 @@ static void _isotx_fasti(void) {
 			return;
 		}
 		iso_txd(1);		//clear TX_break;
+		iso_gpioinit();
+		iso_uartinit();
 
 		guardtime = (frclock - wupc)/frclock_conv;	//true tiniL (ms)
 		isowork_setint(isoparams.twup - guardtime, &ISO_TMR_CCR);
@@ -888,9 +916,6 @@ static void _isotx_fasti(void) {
 			isowork_setint(isoparams.twup - guardtime, &ISO_TMR_CCR);
 			return;
 		}
-
-		iso_gpioinit();
-		iso_uartinit();
 
 		iso_initstate = INIT_IDLE;
 		_isotx_start(iso_initlen, iso_initlen * DEFTIMEOUT);
@@ -916,7 +941,7 @@ static void iso_rxpush(struct rxblock * rxb, u32 ts) {
 	rxb->ts[1] = (u8) ts;
 	ts >>= 8;
 	rxb->ts[0] = (u8) ts;
-	if (fifo_wblock(RXW, (u8 *) rxb, RXBS_MINSIZE + rxb->len) != rxb->len) {
+	if (fifo_wblock(RXW, (u8 *) rxb, RXBS_MINSIZE + rxb->len) != (RXBS_MINSIZE + rxb->len)) {
 		DBGM("RXW fifull!", 0);
 		//XXX medium error ... retry later or dump current block?
 	}

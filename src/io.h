@@ -2,6 +2,8 @@
 #define IO_H
 /** i/o pin and periph defs **/
 
+#include "timers.h"	//for ISO clock def
+
 /* ISO9141/14230 *
 Needs two UART pins for K line (TX + RX), + 1 pin for L
 
@@ -10,6 +12,7 @@ Needs two UART pins for K line (TX + RX), + 1 pin for L
 #define ISO_UART	USART3
 #define ISO_IRQH	USART3_4_IRQHandler
 #define ISO_URCC	RCC_APB1Periph_USART3	//(verify APB1/APB2 if changing USART)
+#define ISO_UFRQ	APB1freq
 
 #define ISO_GRCC	RCC_AHBPeriph_GPIOC
 #define ISO_GPIO	GPIOC

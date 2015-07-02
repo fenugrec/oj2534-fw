@@ -15,7 +15,7 @@ struct isoparams_t {
 	_Bool	k_only;	//K or K+L for init; (set in Connect)
 
 	u32	DATA_RATE;	//bps
-	_Bool LOOPBACK;
+	_Bool LOOPBACK;	//let driver take care of this ?
 
 	u16	p1max;	//(ms) max interbyte for ECU resps
 	u16	p3min;	//(ms) min time between end of ECU resp(s) and new tester req
